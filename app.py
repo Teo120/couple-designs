@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 import base64
 import uuid
+import json
 import stripe
 from werkzeug.utils import secure_filename
 
@@ -510,6 +511,10 @@ def create_checkout_session():
     order_id = str(uuid.uuid4())
     pending_orders[order_id] = data
 
+    first_name = data.get('firstName', '')[:100]
+    last_name  = data.get('lastName', '')[:100]
+    telefon    = data.get('telefon', '')[:50]
+
     line_items = [
         {
             'price_data': {
@@ -528,8 +533,13 @@ def create_checkout_session():
             line_items=line_items,
             mode='payment',
             customer_email=data.get('email', ''),
-            metadata={'order_id': order_id},
-            success_url=request.host_url.rstrip('/') + '/payment-success?session_id={CHECKOUT_SESSION_ID}',
+            metadata={
+                'order_id': order_id,
+                'firstName': first_name,
+                'lastName': last_name,
+                'telefon': telefon,
+            },
+            success_url=request.host_url.rstrip('/') + '/payment-success',
             cancel_url=request.host_url.rstrip('/') + '/cart',
         )
         return jsonify({'url': session.url})
@@ -538,79 +548,116 @@ def create_checkout_session():
         return jsonify({"error": "Eroare la procesarea plății. Încearcă din nou."}), 400
 
 
-# ── Stripe: succes dupa plata ────────────────────────────────
-@app.route('/payment-success')
-def payment_success():
-    customer_name = ''
+# ── Stripe: webhook (confirmare plată) ───────────────────────
+@app.route('/stripe-webhook', methods=['POST'])
+def stripe_webhook():
+    payload    = request.get_data()
+    sig_header = request.headers.get('Stripe-Signature', '')
+    wh_secret  = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+
     try:
-        session_id = request.args.get('session_id', '')
-        if session_id:
-            stripe_session = stripe.checkout.Session.retrieve(session_id)
-            order_id = ''
-            try:
-                order_id = stripe_session.metadata['order_id']
-            except Exception:
-                pass
+        if wh_secret:
+            event = stripe.Webhook.construct_event(payload, sig_header, wh_secret)
+        else:
+            event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
+    except Exception as e:
+        app.logger.error(f"Webhook parse error: {e}")
+        return jsonify({'error': 'Invalid payload'}), 400
+
+    if event['type'] == 'checkout.session.completed':
+        stripe_session = event['data']['object']
+        try:
+            meta       = stripe_session.get('metadata', {})
+            order_id   = meta.get('order_id', '')
+            first_name = meta.get('firstName', '')
+            last_name  = meta.get('lastName', '')
+            email_addr = stripe_session.get('customer_email', '') or meta.get('email', '')
+            telefon    = meta.get('telefon', '')
+
             order_data = pending_orders.pop(order_id, None)
             if order_data:
-                try:
-                    send_order_confirmation(order_data)
-                except Exception as e:
-                    app.logger.error(f"Email error: {e}")
-                try:
-                    customer_name = f"{order_data.get('firstName','')} {order_data.get('lastName','')}".strip()
-                except Exception:
-                    pass
-    except Exception as e:
-        app.logger.error(f"Payment success error: {e}")
+                send_order_confirmation(order_data)
+            elif email_addr:
+                # pending_orders expirat (Railway restart) — email minimal din metadata
+                send_minimal_confirmation(first_name, last_name, email_addr, telefon, stripe_session)
+        except Exception as e:
+            app.logger.error(f"Webhook email error: {e}")
 
-    greeting = f", {customer_name}" if customer_name else ""
-    return f"""<!DOCTYPE html>
-<html lang="ro"><head><meta charset="UTF-8">
-<title>Plată reușită — Couple Designs</title>
-<style>
-*{{box-sizing:border-box;margin:0;padding:0;}}
-body{{font-family:'Helvetica Neue',Arial,sans-serif;background:#0a0a0a;color:#fff;
-      min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px 20px;}}
-.wrap{{max-width:520px;text-align:center;}}
-.icon{{font-size:4rem;margin-bottom:24px;}}
-h1{{font-size:2rem;font-weight:800;margin-bottom:14px;}}
-.sub{{color:#888;font-size:1rem;line-height:1.6;margin-bottom:40px;}}
-.steps{{background:#111;border-radius:16px;padding:24px;text-align:left;
-        margin-bottom:36px;display:flex;flex-direction:column;gap:18px;}}
-.step{{display:flex;gap:14px;align-items:flex-start;}}
-.si{{font-size:1.4rem;flex-shrink:0;}}
-.step strong{{display:block;color:#fff;font-size:0.95rem;margin-bottom:3px;}}
-.step p{{font-size:0.83rem;color:#666;line-height:1.5;margin:0;}}
-.actions{{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}}
-.btn-p{{background:linear-gradient(135deg,#ff4d6d,#ff758f);color:#fff;
-        padding:13px 28px;border-radius:10px;font-weight:700;font-size:0.95rem;text-decoration:none;}}
-.btn-g{{color:#aaa;padding:13px 20px;border-radius:10px;font-size:0.95rem;
-        text-decoration:none;border:1px solid rgba(255,255,255,0.1);}}
-</style></head>
-<body><div class="wrap">
-<div class="icon">&#x2705;</div>
-<h1>Plată reușită{greeting}!</h1>
-<p class="sub">Comanda ta a fost înregistrată și plata a fost procesată cu succes.</p>
-<div class="steps">
-  <div class="step"><span class="si">&#x1F4E7;</span><div>
-    <strong>Confirmare pe email</strong>
-    <p>Vei primi în câteva minute un email cu rezumatul comenzii.</p>
-  </div></div>
-  <div class="step"><span class="si">&#x1F3A8;</span><div>
-    <strong>Design personalizat</strong>
-    <p>Echipa noastră va crea tabloul tău manual, cu grijă și atenție la detalii.</p>
-  </div></div>
-  <div class="step"><span class="si">&#x1F4E6;</span><div>
-    <strong>Livrare</strong>
-    <p>Te vom contacta pentru a stabili detaliile de livrare.</p>
-  </div></div>
-</div>
-<div class="actions">
-  <a href="/designuri" class="btn-p">Explorează mai multe</a>
-  <a href="/" class="btn-g">Înapoi acasă</a>
-</div>
-</div></body></html>"""
+    return jsonify({'status': 'ok'})
+
+
+def send_minimal_confirmation(first_name, last_name, email_addr, telefon, stripe_session):
+    full_name = f"{first_name} {last_name}".strip() or "Client"
+    timestamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+    amount    = stripe_session.get('amount_total', 0) / 100
+
+    store_msg = Message(
+        subject=f"[Comanda Platita] {full_name} — {amount:.2f} RON",
+        sender=app.config['MAIL_USERNAME'],
+        reply_to=email_addr,
+        recipients=[STORE_EMAIL],
+        body=f"Comanda platita!\nNume: {full_name}\nEmail: {email_addr}\nTelefon: {telefon}\nTotal: {amount:.2f} RON\nData: {timestamp}",
+    )
+    mail.send(store_msg)
+
+    customer_msg = Message(
+        subject="Comanda ta la Couple Designs — platita cu succes",
+        sender=app.config['MAIL_USERNAME'],
+        recipients=[email_addr],
+        body=f"Buna ziua, {first_name}!\n\nComanda ta a fost platita cu succes ({amount:.2f} RON).\nTe vom contacta curand.\n\nEchipa Couple Designs",
+    )
+    mail.send(customer_msg)
+
+
+# ── Stripe: pagina succes (fara apeluri externe - nu poate da 500) ──
+@app.route('/payment-success')
+def payment_success():
+    return (
+        '<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8">'
+        '<title>Plata reusita - Couple Designs</title>'
+        '<style>'
+        '*{box-sizing:border-box;margin:0;padding:0;}'
+        'body{font-family:Helvetica Neue,Arial,sans-serif;background:#0a0a0a;color:#fff;'
+        'min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px 20px;}'
+        '.wrap{max-width:520px;text-align:center;}'
+        '.icon{font-size:4rem;margin-bottom:24px;}'
+        'h1{font-size:2rem;font-weight:800;margin-bottom:14px;}'
+        '.sub{color:#888;font-size:1rem;line-height:1.6;margin-bottom:40px;}'
+        '.steps{background:#111;border-radius:16px;padding:24px;text-align:left;'
+        'margin-bottom:36px;display:flex;flex-direction:column;gap:18px;}'
+        '.step{display:flex;gap:14px;align-items:flex-start;}'
+        '.si{font-size:1.4rem;flex-shrink:0;}'
+        '.step strong{display:block;color:#fff;font-size:.95rem;margin-bottom:3px;}'
+        '.step p{font-size:.83rem;color:#666;line-height:1.5;margin:0;}'
+        '.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}'
+        '.btn-p{background:linear-gradient(135deg,#ff4d6d,#ff758f);color:#fff;'
+        'padding:13px 28px;border-radius:10px;font-weight:700;font-size:.95rem;text-decoration:none;}'
+        '.btn-g{color:#aaa;padding:13px 20px;border-radius:10px;font-size:.95rem;'
+        'text-decoration:none;border:1px solid rgba(255,255,255,.1);}'
+        '</style></head>'
+        '<body><div class="wrap">'
+        '<div class="icon">&#x2705;</div>'
+        '<h1>Plata reusita!</h1>'
+        '<p class="sub">Comanda ta a fost inregistrata si plata a fost procesata cu succes.</p>'
+        '<div class="steps">'
+        '<div class="step"><span class="si">&#x1F4E7;</span><div>'
+        '<strong>Confirmare pe email</strong>'
+        '<p>Vei primi in cateva minute un email cu rezumatul comenzii.</p>'
+        '</div></div>'
+        '<div class="step"><span class="si">&#x1F3A8;</span><div>'
+        '<strong>Design personalizat</strong>'
+        '<p>Echipa noastra va crea tabloul tau manual, cu grija si atentie la detalii.</p>'
+        '</div></div>'
+        '<div class="step"><span class="si">&#x1F4E6;</span><div>'
+        '<strong>Livrare</strong>'
+        '<p>Te vom contacta pentru a stabili detaliile de livrare.</p>'
+        '</div></div>'
+        '</div>'
+        '<div class="actions">'
+        '<a href="/designuri" class="btn-p">Exploreaza mai multe</a>'
+        '<a href="/" class="btn-g">Inapoi acasa</a>'
+        '</div></div></body></html>'
+    )
 
 
 # ── Entry point ───────────────────────────────────────────────
