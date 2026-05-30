@@ -538,7 +538,7 @@ def create_checkout_session():
         return jsonify({"error": "Eroare la procesarea plății. Încearcă din nou."}), 400
 
 
-# ── Stripe: succes după plată ─────────────────────────────────
+# ── Stripe: succes dupa plata ────────────────────────────────
 @app.route('/payment-success')
 def payment_success():
     session_id = request.args.get('session_id')
