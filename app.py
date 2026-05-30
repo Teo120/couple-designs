@@ -553,8 +553,12 @@ def payment_success():
     if stripe_session.payment_status != 'paid':
         return redirect('/cart')
 
-    metadata   = dict(stripe_session.metadata) if stripe_session.metadata else {}
-    order_id   = metadata.get('order_id', '')
+    order_id = ''
+    try:
+        order_id = stripe_session.metadata['order_id']
+    except Exception:
+        order_id = ''
+
     order_data = pending_orders.pop(order_id, None)
 
     if order_data:
