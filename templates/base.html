@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Couple Designs{% endblock %}</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+    <div class="nav-container">
+
+        <!-- LOGO -->
+        <a href="{{ url_for('index') }}" class="logo">
+            <svg class="logo-heart" viewBox="0 0 24 24" fill="none">
+                <path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z" fill="#FF2D78"/>
+            </svg>
+            <span class="logo-text">
+                Couple<br><span class="logo-script">Designs</span>
+            </span>
+        </a>
+
+        <!-- NAV LINKS -->
+        <ul class="nav-links">
+            <li><a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">Acasă</a></li>
+            <li><a href="{{ url_for('designuri') }}" class="nav-link {% if request.endpoint == 'designuri' %}active{% endif %}">Designuri</a></li>
+            <li><a href="{{ url_for('despre_noi') }}" class="nav-link {% if request.endpoint == 'despre_noi' %}active{% endif %}">Despre noi</a></li>
+            <li><a href="{{ url_for('cum_functioneaza') }}" class="nav-link {% if request.endpoint == 'cum_functioneaza' %}active{% endif %}">Cum funcționează</a></li>
+            <li><a href="{{ url_for('contact') }}" class="nav-link {% if request.endpoint == 'contact' %}active{% endif %}">Contact</a></li>
+        </ul>
+
+        <!-- ACTIONS -->
+        <div class="nav-actions">
+
+            <!-- SEARCH -->
+            <button class="nav-icon-btn" aria-label="Căutare">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </button>
+
+            <!-- 🛒 CART (FIXED) -->
+            <a href="{{ url_for('cart') }}" class="nav-icon-btn cart-btn" aria-label="Coș">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+                    <line x1="3" y1="6" x2="21" y2="6"/>
+                    <path d="M16 10a4 4 0 01-8 0"/>
+                </svg>
+                <span class="cart-badge" id="cart-count">0</span>
+            </a>
+
+            <!-- ACCOUNT -->
+            <button class="btn-account">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                </svg>
+                Contul meu
+            </button>
+
+        </div>
+
+        <!-- MOBILE -->
+        <button class="hamburger" id="hamburger">
+            <span></span><span></span><span></span>
+        </button>
+
+    </div>
+</nav>
+
+<!-- MAIN -->
+<main>
+    {% block content %}{% endblock %}
+</main>
+
+<!-- FOOTER -->
+<footer class="footer">
+    <div class="footer-container">
+
+        <div class="footer-col">
+            <a href="{{ url_for('index') }}" class="logo footer-logo">
+                <svg class="logo-heart" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z" fill="#FF2D78"/>
+                </svg>
+                <span class="logo-text">
+                    Couple<br><span class="logo-script">Designs</span>
+                </span>
+            </a>
+            <p class="footer-desc">Designuri unice create cu dragoste pentru cupluri speciale.</p>
+        </div>
+
+        <div class="footer-col">
+            <h4>Navigare</h4>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Acasă</a></li>
+                <li><a href="{{ url_for('designuri') }}">Designuri</a></li>
+                <li><a href="{{ url_for('despre_noi') }}">Despre noi</a></li>
+                <li><a href="{{ url_for('contact') }}">Contact</a></li>
+            </ul>
+        </div>
+
+        <div class="footer-col">
+            <h4>Contact</h4>
+            <ul>
+                <li>contact@coupledesigns.ro</li>
+                <li>+40 749 675 105</li>
+                <li>România</li>
+            </ul>
+        </div>
+
+    </div>
+
+    <div class="footer-bottom">
+        <p>© 2024 Couple Designs. Toate drepturile rezervate.</p>
+    </div>
+</footer>
+
+<!-- SCRIPTS -->
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+<script>
+function updateCartIcon() {
+    let cart = JSON.parse(localStorage.getItem("cart")) || [];
+
+    let count = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+    const el = document.getElementById("cart-count");
+    if (!el) return;
+
+    el.innerText = count;
+}
+
+// 🔥 UPDATE LA LOAD
+updateCartIcon();
+
+// 🔥 UPDATE LIVE
+window.addEventListener("cartUpdated", updateCartIcon);
+</script>
+
+{% block extra_js %}{% endblock %}
+
+</body>
+</html>

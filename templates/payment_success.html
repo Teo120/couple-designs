@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Comandă confirmată — Couple Designs{% endblock %}
+
+{% block content %}
+
+<div class="page-content">
+  <div class="success-wrap">
+
+    <div class="success-icon-ring">✅</div>
+
+    <h1 class="success-title">
+      Plată reușită{% if name %}, {{ name }}{% endif %}!
+    </h1>
+
+    <p class="success-sub">
+      Comanda ta a fost înregistrată și plata a fost procesată cu succes.
+    </p>
+
+    <div class="success-steps">
+      <div class="success-step">
+        <span class="step-icon">📧</span>
+        <div>
+          <strong>Confirmare pe email</strong>
+          <p>Vei primi în câteva minute un email cu rezumatul comenzii.</p>
+        </div>
+      </div>
+      <div class="success-step">
+        <span class="step-icon">🎨</span>
+        <div>
+          <strong>Design personalizat</strong>
+          <p>Echipa noastră va crea tabloul tău manual, cu grijă și atenție la detalii.</p>
+        </div>
+      </div>
+      <div class="success-step">
+        <span class="step-icon">📦</span>
+        <div>
+          <strong>Livrare</strong>
+          <p>Te vom contacta pentru a stabili detaliile de livrare.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="success-actions">
+      <a href="/designuri" class="btn-primary">Explorează mai multe designuri</a>
+      <a href="/" class="btn-ghost">Înapoi acasă</a>
+    </div>
+
+  </div>
+</div>
+
+<style>
+.success-wrap {
+  max-width: 560px;
+  margin: 60px auto 80px;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.success-icon-ring {
+  font-size: 3.5rem;
+  margin-bottom: 24px;
+  display: inline-block;
+  background: rgba(76, 175, 80, 0.1);
+  border: 2px solid rgba(76, 175, 80, 0.25);
+  border-radius: 50%;
+  width: 90px;
+  height: 90px;
+  line-height: 90px;
+}
+
+.success-title {
+  font-size: 1.9rem;
+  font-weight: 800;
+  margin: 0 0 14px;
+  color: #fff;
+}
+
+.success-sub {
+  font-size: 1rem;
+  color: #888;
+  margin: 0 0 40px;
+  line-height: 1.6;
+}
+
+.success-steps {
+  background: #111;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  text-align: left;
+  margin-bottom: 36px;
+}
+
+.success-step {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.step-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.success-step strong {
+  display: block;
+  color: #fff;
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+
+.success-step p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #666;
+  line-height: 1.5;
+}
+
+.success-actions {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #ff4d6d, #ff758f);
+  color: #fff;
+  padding: 13px 28px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  box-shadow: 0 4px 18px rgba(255, 77, 109, 0.35);
+  transition: all 0.25s;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 22px rgba(255, 77, 109, 0.45);
+}
+
+.btn-ghost {
+  color: #aaa;
+  padding: 13px 20px;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  text-decoration: none;
+  border: 1px solid rgba(255,255,255,0.1);
+  transition: 0.2s;
+}
+
+.btn-ghost:hover {
+  border-color: rgba(255,255,255,0.25);
+  color: #fff;
+}
+</style>
+
+{% endblock %}

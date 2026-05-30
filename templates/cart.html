@@ -1,0 +1,824 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-hero">
+    <h1>Coșul meu</h1>
+</div>
+
+<div class="page-content">
+
+  <!-- ═══════════════════════════════════
+       LAYOUT: CART (stânga) + CHECKOUT (dreapta)
+  ══════════════════════════════════════ -->
+  <div class="cart-checkout-layout">
+
+    <!-- ── COLOANA STÂNGA: Produse din coș ── -->
+    <div class="cart-column">
+      <h2 class="section-title">🛒 Produse selectate</h2>
+
+      <div id="cart-container" class="cart-container"></div>
+
+      <div class="cart-footer">
+        <div class="cart-summary">
+          <h2 id="cart-total">Total: 0 RON</h2>
+          <div id="loader" class="loader hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── COLOANA DREAPTA: Formular checkout ── -->
+    <div class="checkout-column">
+      <h2 class="section-title">📦 Detalii comandă</h2>
+
+      <div class="checkout-form-box">
+
+        <div class="form-row">
+          <input type="text" id="firstName" placeholder="Prenume" class="form-input" />
+          <input type="text" id="lastName"  placeholder="Nume"    class="form-input" />
+        </div>
+
+        <input type="email" id="email"    placeholder="Adresă email"  class="form-input" />
+        <input type="tel"   id="telefon"  placeholder="Număr telefon" class="form-input" />
+        <!-- Sumar plată -->
+        <div class="payment-summary-box">
+          <div class="payment-summary-row">
+            <span class="pay-label">Total de plată</span>
+            <strong class="pay-amount" id="checkout-amount">0 RON</strong>
+          </div>
+          <div class="pay-methods">
+            <span class="pay-secure">🔒 Plată securizată prin</span>
+            <span class="stripe-word">stripe</span>
+            <span class="pay-cards">· Visa · Mastercard</span>
+          </div>
+        </div>
+
+        <button id="submit-order" class="checkout-btn">
+          🔒 Plătește cu cardul
+        </button>
+
+        <p id="checkout-error" class="error-msg"></p>
+
+      </div>
+    </div>
+
+  </div><!-- /.cart-checkout-layout -->
+
+</div><!-- /.page-content -->
+
+<!-- Toast notification -->
+<div id="toast" class="toast"></div>
+
+
+<style>
+/* ══════════════════════════════════
+   LAYOUT PRINCIPAL
+══════════════════════════════════ */
+.cart-checkout-layout {
+  display: flex;
+  gap: 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px 60px;
+  align-items: flex-start;
+}
+
+.cart-column {
+  flex: 1 1 55%;
+  min-width: 0;
+}
+
+.checkout-column {
+  flex: 1 1 40%;
+  min-width: 0;
+  position: sticky;
+  top: 100px;
+}
+
+.section-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+/* ══════════════════════════════════
+   CART ITEMS
+══════════════════════════════════ */
+.cart-container {
+  width: 100%;
+}
+
+.cart-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #111;
+  padding: 15px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  opacity: 0;
+  transform: translateY(12px);
+  animation: fadeIn 0.35s ease forwards;
+}
+
+.cart-item.removing {
+  animation: slideOut 0.25s ease forwards;
+}
+
+.cart-left {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.cart-left img {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.cart-left h3 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+}
+
+.cart-left p {
+  margin: 0;
+  color: #ff4081;
+  font-weight: 600;
+}
+
+.cart-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.quantity-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+
+.qty-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #ff4081, #ff6ec4);
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  transition: 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qty-btn:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 8px #ff4081;
+}
+
+.qty-value {
+  min-width: 20px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.remove-btn {
+  margin-top: 8px;
+  background: transparent;
+  border: none;
+  color: #ff4d4d;
+  cursor: pointer;
+  transition: 0.2s;
+  font-size: 0.82rem;
+  padding: 0;
+}
+
+.remove-btn:hover {
+  transform: translateX(4px);
+  color: #ff2222;
+}
+
+/* Cart footer */
+.cart-footer {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #222;
+}
+
+.cart-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+#cart-total {
+  margin: 0;
+  font-size: 1.3rem;
+  color: #fff;
+}
+
+/* Empty cart */
+.empty-cart {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+  font-size: 1rem;
+}
+
+/* ══════════════════════════════════
+   CHECKOUT FORM
+══════════════════════════════════ */
+.checkout-form-box {
+  background: #111;
+  border-radius: 16px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #ff4081;
+}
+
+.form-input::placeholder {
+  color: #555;
+}
+
+/* Payment summary */
+.payment-summary-box {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.payment-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pay-label {
+  font-size: 0.82rem;
+  color: #888;
+}
+
+.pay-amount {
+  font-size: 1.1rem;
+  color: #fff;
+  font-weight: 700;
+}
+
+.pay-methods {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pay-secure {
+  font-size: 0.75rem;
+  color: #555;
+}
+
+.stripe-word {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #635bff;
+  letter-spacing: -0.5px;
+}
+
+.pay-cards {
+  font-size: 0.75rem;
+  color: #444;
+}
+
+/* Submit button */
+.checkout-btn {
+  background: linear-gradient(135deg, #ff4d6d, #ff758f);
+  border: none;
+  padding: 15px 28px;
+  border-radius: 10px;
+  color: white;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 18px rgba(255, 77, 109, 0.35);
+  letter-spacing: 0.3px;
+}
+
+.checkout-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 22px rgba(255, 77, 109, 0.45);
+}
+
+.checkout-btn:active {
+  transform: scale(0.98);
+}
+
+.checkout-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.error-msg {
+  color: #ff4d4d;
+  text-align: center;
+  font-size: 0.88rem;
+  margin: 0;
+  min-height: 1.2em;
+}
+
+.success-msg {
+  color: #4caf50;
+  text-align: center;
+  font-size: 0.9rem;
+  margin: 0;
+  background: rgba(76, 175, 80, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+/* ══════════════════════════════════
+   LOADER & TOAST
+══════════════════════════════════ */
+.loader {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #333;
+  border-top: 3px solid #ff4081;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+.hidden { display: none !important; }
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #ff4081;
+  color: white;
+  padding: 11px 18px;
+  border-radius: 10px;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: 0.3s;
+  z-index: 9999;
+  font-size: 0.9rem;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ══════════════════════════════════
+   ANIMATIONS
+══════════════════════════════════ */
+@keyframes fadeIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideOut {
+  to { opacity: 0; transform: translateX(-50px); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ══════════════════════════════════
+   PHOTO PREVIEW
+══════════════════════════════════ */
+.cart-item-wrap {
+  margin-bottom: 14px;
+}
+
+.cart-item-wrap .cart-item {
+  margin-bottom: 0;
+  border-radius: 12px 12px 0 0;
+}
+
+.photo-preview-wrap {
+  background: #0d0d0d;
+  border-radius: 0 0 12px 12px;
+  border-top: 1px solid #1a1a1a;
+  overflow: hidden;
+}
+
+.preview-toggle-btn {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #ff4081;
+  padding: 10px 15px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: inherit;
+}
+
+.preview-toggle-btn:hover {
+  background: rgba(255, 64, 129, 0.07);
+}
+
+.toggle-arrow {
+  font-size: 0.75rem;
+}
+
+.preview-panel {
+  padding: 0 15px 14px;
+}
+
+.preview-split {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.preview-side {
+  flex: 1;
+  min-width: 0;
+}
+
+.preview-label {
+  font-size: 0.7rem;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin: 0 0 6px;
+}
+
+.preview-style-img {
+  width: 100%;
+  max-height: 150px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #222;
+}
+
+.preview-plus {
+  font-size: 1.6rem;
+  color: #ff4081;
+  flex-shrink: 0;
+  font-weight: 200;
+  line-height: 1;
+}
+
+.preview-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.preview-photo-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid #1e1e1e;
+}
+
+.preview-disclaimer {
+  font-size: 0.7rem;
+  color: #3a3a3a;
+  text-align: center;
+  margin: 10px 0 0;
+  font-style: italic;
+}
+
+/* ══════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════ */
+@media (max-width: 820px) {
+  .cart-checkout-layout {
+    flex-direction: column;
+  }
+
+  .checkout-column {
+    position: static;
+  }
+
+  .form-row {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .cart-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .cart-right {
+    text-align: left;
+    width: 100%;
+  }
+
+  .quantity-controls {
+    justify-content: flex-start;
+  }
+}
+</style>
+
+
+<script>
+/* ══════════════════════════════════
+   CART + CHECKOUT — unified module
+   No redirects. No demo buttons.
+   Everything happens on this page.
+══════════════════════════════════ */
+(function () {
+
+  let cart = [];
+
+  /* ── Utilities ── */
+  function showToast(msg, color) {
+    const t = document.getElementById("toast");
+    t.innerText = msg;
+    t.style.background = color || "#ff4081";
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2500);
+  }
+
+  function saveCart() {
+    localStorage.setItem("cart", JSON.stringify(cart));
+    // keep navbar badge in sync
+    const badge = document.getElementById("cart-count");
+    if (badge) {
+      badge.innerText = cart.reduce((s, i) => s + i.quantity, 0);
+    }
+  }
+
+  /* ── Photo preview per produs ── */
+  function buildPhotoPreview(item) {
+    let photos = [];
+    try {
+      const raw = sessionStorage.getItem(`cd_session_images_${item.id}`);
+      if (raw) photos = JSON.parse(raw);
+    } catch(e) {}
+    if (!photos.length) return null;
+
+    const wrap = document.createElement("div");
+    wrap.className = "photo-preview-wrap";
+
+    const toggleId = `pp-${item.id}`;
+    wrap.innerHTML = `
+      <button class="preview-toggle-btn" onclick="
+        var p = document.getElementById('${toggleId}');
+        p.classList.toggle('hidden');
+        this.querySelector('.toggle-arrow').textContent = p.classList.contains('hidden') ? '▾' : '▴';
+      ">
+        📸 ${photos.length} poze încărcate &mdash; Previzualizare <span class="toggle-arrow">▾</span>
+      </button>
+      <div id="${toggleId}" class="preview-panel hidden">
+        <div class="preview-split">
+          <div class="preview-side">
+            <p class="preview-label">Stilul ales</p>
+            <img src="/static/images/${item.image}" class="preview-style-img" alt="${item.name}">
+          </div>
+          <div class="preview-plus">+</div>
+          <div class="preview-side">
+            <p class="preview-label">Pozele tale (${photos.length})</p>
+            <div class="preview-photo-grid" id="pg-${item.id}"></div>
+          </div>
+        </div>
+        <p class="preview-disclaimer">Preview orientativ — produsul final va fi creat manual de noi</p>
+      </div>`;
+
+    setTimeout(() => {
+      const grid = document.getElementById(`pg-${item.id}`);
+      if (!grid) return;
+      photos.forEach(p => {
+        const img = document.createElement("img");
+        img.src = p.dataUrl;
+        img.alt = p.name;
+        img.className = "preview-photo-thumb";
+        grid.appendChild(img);
+      });
+    }, 0);
+
+    return wrap;
+  }
+
+  /* ── Render cart items ── */
+  function renderCart() {
+    const container = document.getElementById("cart-container");
+    const totalEl   = document.getElementById("cart-total");
+    if (!container || !totalEl) return;
+
+    container.innerHTML = "";
+    let total = 0;
+
+    if (!cart.length) {
+      container.innerHTML = `
+        <div class="empty-cart">
+          <p style="margin-bottom:12px;">🛒 Coșul tău este gol.</p>
+          <a href="/designuri" style="color:#ff4081;font-weight:600;">Explorează designurile →</a>
+        </div>`;
+      totalEl.innerText = "Total: 0 RON";
+      return;
+    }
+
+    cart.forEach((item, index) => {
+      total += item.price * item.quantity;
+
+      const wrap = document.createElement("div");
+      wrap.className = "cart-item-wrap";
+
+      const el = document.createElement("div");
+      el.className = "cart-item";
+      el.innerHTML = `
+        <div class="cart-left">
+          <img src="/static/images/${item.image}" alt="${item.name}">
+          <div>
+            <h3>${item.name}</h3>
+            <p>${item.price} RON</p>
+          </div>
+        </div>
+        <div class="cart-right">
+          <div class="quantity-controls">
+            <button class="qty-btn" data-action="dec" data-i="${index}">−</button>
+            <span class="qty-value">${item.quantity}</span>
+            <button class="qty-btn" data-action="inc" data-i="${index}">+</button>
+          </div>
+          <button class="remove-btn" data-action="remove" data-i="${index}">🗑 Șterge</button>
+        </div>`;
+      wrap.appendChild(el);
+
+      const preview = buildPhotoPreview(item);
+      if (preview) wrap.appendChild(preview);
+
+      container.appendChild(wrap);
+    });
+
+    totalEl.innerText = "Total: " + total + " RON";
+
+    const amountEl = document.getElementById("checkout-amount");
+    if (amountEl) amountEl.textContent = total + " RON";
+  }
+
+  /* ── Event delegation for cart buttons ── */
+  function handleCartClick(e) {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+
+    const i      = parseInt(btn.dataset.i);
+    const action = btn.dataset.action;
+
+    if (action === "inc") {
+      cart[i].quantity++;
+      saveCart(); renderCart();
+      showToast("Cantitate crescută ✓");
+    }
+
+    if (action === "dec") {
+      if (cart[i].quantity > 1) {
+        cart[i].quantity--;
+      } else {
+        cart.splice(i, 1);
+      }
+      saveCart(); renderCart();
+    }
+
+    if (action === "remove") {
+      const itemEl = btn.closest(".cart-item");
+      itemEl.classList.add("removing");
+      setTimeout(() => {
+        cart.splice(i, 1);
+        saveCart(); renderCart();
+        showToast("Produs șters");
+      }, 260);
+    }
+  }
+
+  /* ── Colectează pozele uploadate din sessionStorage ── */
+  function collectSessionImages() {
+    const imgs = [];
+    cart.forEach(item => {
+      try {
+        const raw = sessionStorage.getItem(`cd_session_images_${item.id}`);
+        if (raw) {
+          JSON.parse(raw).forEach(img =>
+            imgs.push({ productId: item.id, productName: item.name, ...img })
+          );
+        }
+      } catch(e) {}
+    });
+    return imgs;
+  }
+
+  /* ── Checkout → redirecționează la Stripe ── */
+  async function handleSubmit() {
+    const errorEl   = document.getElementById("checkout-error");
+    const submitBtn = document.getElementById("submit-order");
+    const loader    = document.getElementById("loader");
+
+    errorEl.textContent = "";
+
+    if (!cart.length) {
+      errorEl.textContent = "Adaugă cel puțin un produs înainte de a plăti.";
+      return;
+    }
+
+    const data = {
+      firstName : document.getElementById("firstName").value.trim(),
+      lastName  : document.getElementById("lastName").value.trim(),
+      email     : document.getElementById("email").value.trim(),
+      telefon   : document.getElementById("telefon").value.trim(),
+      cart,
+      sessionImages: collectSessionImages()
+    };
+
+    const labels = { firstName: "Prenume", lastName: "Nume", email: "Email", telefon: "Telefon" };
+    const missing = Object.keys(labels).filter(k => !data[k]);
+    if (missing.length) {
+      errorEl.textContent = "Câmpuri obligatorii lipsă: " + missing.map(k => labels[k]).join(", ") + ".";
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+      errorEl.textContent = "Adresa de email nu este validă.";
+      return;
+    }
+
+    submitBtn.disabled = true;
+    loader.classList.remove("hidden");
+
+    try {
+      const res = await fetch("/create-checkout-session", {
+        method  : "POST",
+        headers : { "Content-Type": "application/json" },
+        body    : JSON.stringify(data)
+      });
+      const r = await res.json();
+
+      if (r.url) {
+        window.location.href = r.url;   // redirecționare la Stripe
+      } else {
+        errorEl.textContent = r.error || "A apărut o eroare. Încearcă din nou.";
+        submitBtn.disabled = false;
+        loader.classList.add("hidden");
+      }
+    } catch (err) {
+      console.error("Checkout error:", err);
+      errorEl.textContent = "Eroare de conexiune. Verifică internetul și încearcă din nou.";
+      submitBtn.disabled = false;
+      loader.classList.add("hidden");
+    }
+  }
+
+  /* ── Init on DOM ready ── */
+  document.addEventListener("DOMContentLoaded", () => {
+    cart = JSON.parse(localStorage.getItem("cart") || "[]");
+
+    document.getElementById("cart-container")
+      .addEventListener("click", handleCartClick);
+
+    document.getElementById("submit-order")
+      .addEventListener("click", handleSubmit);
+
+    renderCart();
+  });
+
+})();
+</script>
+
+{% endblock %}

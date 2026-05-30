@@ -1,0 +1,522 @@
+{% extends "base.html" %}
+
+{% block title %}Personalizează {{ product.name }} - Couple Designs{% endblock %}
+
+{% block content %}
+
+<div class="page-hero">
+    <h1>Personalizează: {{ product.name }}</h1>
+    <p>Încarcă pozele tale și previzualizează designul final</p>
+</div>
+
+<!--
+  SESSION STORAGE KEY folosit: "cd_session_images_<productId>"
+  Structura: JSON array de obiecte { name, type, dataUrl }
+  Ciclul de viață: datele există DOAR în tab-ul/sesiunea curentă.
+  Dacă utilizatorul închide tab-ul sau browser-ul, datele sunt șterse automat.
+  Fiecare sesiune/tab are propriul spațiu de stocare izolat.
+-->
+
+<div class="page-content" id="upload-root"
+     data-id="{{ product.id }}"
+     data-name="{{ product.name }}"
+     data-price="{{ product.price }}"
+     data-image="{{ product.image }}">
+
+    <!-- ══════════════════════════════════
+         PASUL 1: Zona de upload
+    ══════════════════════════════════ -->
+    <div id="step-upload" class="upload-step">
+
+        <div class="upload-area" id="drop-zone">
+            <input type="file" id="file-input" multiple accept="image/*" class="file-input-hidden">
+            <div class="upload-area-inner" id="drop-label">
+                <div class="upload-icon">📸</div>
+                <p class="upload-title">Trage pozele aici sau <span class="upload-link">alege fișiere</span></p>
+                <p class="upload-subtitle" id="upload-hint">Se încarcă pozele din sesiunea curentă...</p>
+            </div>
+        </div>
+
+        <!-- Galerie poze încărcate -->
+        <div id="preview-container" class="preview-grid"></div>
+
+        <!-- Status validare -->
+        <div id="validation-bar" class="validation-bar">
+            <span id="count-indicator" class="count-indicator">0 / <span id="required-count">?</span> poze</span>
+            <p id="message" class="validation-message"></p>
+        </div>
+
+        <!-- Buton Finalizează -->
+        <div class="finalize-row">
+            <button id="submit-btn" class="btn-finalize" disabled>
+                ✅ Finalizează &amp; Previzualizează
+            </button>
+        </div>
+
+    </div>
+
+    <!-- ══════════════════════════════════
+         PASUL 2: Previzualizare + Adaugă în coș
+         (ascuns inițial, apare după Finalizează)
+    ══════════════════════════════════ -->
+    <div id="step-preview" class="preview-step hidden">
+
+        <div class="preview-header">
+            <h2>Previzualizare comandă</h2>
+            <button id="btn-back" class="btn-back">← Modifică pozele</button>
+        </div>
+
+        <!-- Produsul selectat -->
+        <div class="preview-product-card">
+            <img id="preview-product-img"
+                 src="{{ url_for('static', filename='images/' + product.image) }}"
+                 alt="{{ product.name }}"
+                 class="preview-product-img">
+            <div class="preview-product-info">
+                <h3>{{ product.name }}</h3>
+                <p class="preview-price">{{ product.price }} RON</p>
+                <p class="preview-note">Design personalizat cu pozele tale</p>
+            </div>
+        </div>
+
+        <!-- Galerie poze uploadate (toate pozele din sesiune) -->
+        <div class="uploaded-gallery-section">
+            <h3>Pozele tale din această sesiune</h3>
+            <div id="session-gallery" class="session-gallery"></div>
+        </div>
+
+        <!-- ══ BUTONUL DE COȘ ══
+             Aceeași logică .cart-quick-btn din main.js — reutilizată fără duplicare.
+             data-* atributele sunt completate dinamic din dataset-ul paginii.
+             Clasa `cart-quick-btn` declanșează handlerul din main.js (event delegation).
+             Pe Acasă butonul e ascuns vizual; aici e afișat explicit și stilizat diferit. -->
+        <div class="add-to-cart-section">
+            <button
+                id="preview-cart-btn"
+                class="cart-quick-btn preview-cart-btn"
+                data-id="{{ product.id }}"
+                data-name="{{ product.name }}"
+                data-price="{{ product.price }}"
+                data-image="{{ product.image }}"
+                aria-label="Adaugă în coș">
+                🛒 Adaugă în coș — {{ product.price }} RON
+            </button>
+            <a href="/cart" class="btn-go-cart">Vezi coșul →</a>
+        </div>
+
+    </div>
+
+</div><!-- /.page-content -->
+
+
+<style>
+/* ══════════════════════════════════
+   Upload page — stiluri specifice
+══════════════════════════════════ */
+.upload-step, .preview-step { max-width: 800px; margin: 0 auto; padding: 20px; }
+
+/* Zona drag-and-drop */
+.upload-area {
+    border: 2px dashed rgba(255, 45, 120, 0.4);
+    border-radius: 16px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.25s, background 0.25s;
+    background: rgba(255, 45, 120, 0.03);
+    margin-bottom: 24px;
+}
+.upload-area:hover, .upload-area.drag-over {
+    border-color: #ff2d78;
+    background: rgba(255, 45, 120, 0.08);
+}
+.file-input-hidden { display: none; }
+.upload-icon { font-size: 2.5rem; margin-bottom: 10px; }
+.upload-title { font-size: 1rem; color: #ccc; margin: 0 0 6px; }
+.upload-link { color: #ff2d78; font-weight: 600; cursor: pointer; }
+.upload-subtitle { font-size: 0.82rem; color: #666; margin: 0; }
+
+/* Galerie poze upload */
+.preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.preview-item {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    aspect-ratio: 1;
+    background: #111;
+    animation: fadeIn 0.3s ease;
+}
+.preview-item img {
+    width: 100%; height: 100%;
+    object-fit: cover; display: block;
+}
+.preview-item .remove-img-btn {
+    position: absolute; top: 4px; right: 4px;
+    width: 22px; height: 22px;
+    background: rgba(0,0,0,0.7); border: none;
+    border-radius: 50%; color: white;
+    font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: 0.2s;
+}
+.preview-item .remove-img-btn:hover { background: #ff2d78; }
+
+/* Validation bar */
+.validation-bar {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 20px; flex-wrap: wrap;
+}
+.count-indicator {
+    background: #1a1a1a; border-radius: 8px;
+    padding: 6px 14px; font-size: 0.85rem; white-space: nowrap;
+}
+.validation-message { margin: 0; font-size: 0.88rem; }
+.validation-message.ok  { color: #4caf50; }
+.validation-message.err { color: #ff4d4d; }
+
+/* Finalize row */
+.finalize-row { text-align: center; margin-top: 8px; }
+.btn-finalize {
+    background: linear-gradient(135deg, #ff4d6d, #ff758f);
+    border: none; padding: 15px 36px; border-radius: 12px;
+    color: white; font-weight: 700; font-size: 1rem;
+    cursor: pointer; transition: all 0.25s;
+    box-shadow: 0 4px 18px rgba(255,77,109,0.3);
+}
+.btn-finalize:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 7px 22px rgba(255,77,109,0.45);
+}
+.btn-finalize:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Preview step */
+.preview-header {
+    display: flex; justify-content: space-between;
+    align-items: center; margin-bottom: 28px;
+}
+.preview-header h2 { margin: 0; font-size: 1.4rem; }
+.btn-back {
+    background: transparent; border: 1px solid rgba(255,255,255,0.15);
+    color: #aaa; padding: 8px 16px; border-radius: 8px;
+    cursor: pointer; font-size: 0.88rem; transition: 0.2s;
+}
+.btn-back:hover { border-color: #ff2d78; color: #ff2d78; }
+
+/* Preview product card */
+.preview-product-card {
+    display: flex; gap: 24px; align-items: center;
+    background: #111; border-radius: 16px; padding: 20px;
+    margin-bottom: 30px;
+}
+.preview-product-img {
+    width: 120px; height: 120px;
+    object-fit: cover; border-radius: 10px; flex-shrink: 0;
+}
+.preview-product-info h3 { margin: 0 0 6px; font-size: 1.1rem; }
+.preview-price { color: #ff2d78; font-weight: 700; font-size: 1.2rem; margin: 0 0 6px; }
+.preview-note { color: #666; font-size: 0.82rem; margin: 0; }
+
+/* Session gallery */
+.uploaded-gallery-section { margin-bottom: 30px; }
+.uploaded-gallery-section h3 { margin: 0 0 14px; font-size: 1rem; color: #aaa; }
+.session-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 8px;
+}
+.session-gallery img {
+    width: 100%; aspect-ratio: 1;
+    object-fit: cover; border-radius: 8px;
+    border: 1px solid #222;
+}
+
+/* Cart section in preview */
+.add-to-cart-section {
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+}
+
+/* ── preview-cart-btn suprascrie stilul pozitionat-absolut al .cart-quick-btn ──
+   Aceeași clasă + handler din main.js, dar aspect de buton full inline. */
+.preview-cart-btn {
+    position: static !important;
+    width: auto !important; height: auto !important;
+    background: linear-gradient(135deg, #ff4d6d, #ff758f) !important;
+    border-radius: 12px !important;
+    padding: 14px 28px !important;
+    font-size: 1rem !important; font-weight: 700 !important;
+    border: none !important;
+    box-shadow: 0 4px 18px rgba(255,77,109,0.35) !important;
+    color: white !important;
+    cursor: pointer !important;
+    transition: all 0.25s ease !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+.preview-cart-btn:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 7px 22px rgba(255,77,109,0.45) !important;
+}
+.preview-cart-btn.added {
+    background: linear-gradient(135deg, #4caf50, #81c784) !important;
+}
+
+.btn-go-cart {
+    color: #ff2d78; font-weight: 600; font-size: 0.9rem;
+    text-decoration: none; padding: 8px 4px;
+    border-bottom: 1px solid transparent;
+    transition: 0.2s;
+}
+.btn-go-cart:hover { border-bottom-color: #ff2d78; }
+
+.hidden { display: none !important; }
+@keyframes fadeIn { from { opacity:0; transform:scale(0.9); } to { opacity:1; transform:scale(1); } }
+</style>
+
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   UPLOAD PAGE — session storage + preview + cart integration
+   Fișier: templates/upload.html
+
+   SESSION STORAGE:
+   - Cheia: `cd_session_images_${productId}`
+   - Valoare: JSON.stringify([{ name, type, dataUrl }, ...])
+   - Scope: Tab curent. Dacă tab-ul e închis → date șterse automat.
+     Sesiuni diferite (tab-uri diferite) nu împart date.
+   - La submit comandă (cart.html) imaginile sunt citite din
+     sessionStorage și trimise ca baze64 la /checkout pentru
+     a fi atașate la email-ul merchantului.
+══════════════════════════════════════════════════════════════ */
+
+(function () {
+    "use strict";
+
+    /* ── Config din Flask (via data-* atribute) ── */
+    const root        = document.getElementById("upload-root");
+    const PRODUCT_ID  = root.dataset.id;
+    const PRODUCT_PRICE = parseInt(root.dataset.price, 10);
+
+    /* Cheia de sessionStorage pentru acest produs + sesiune */
+    const SESSION_KEY = `cd_session_images_${PRODUCT_ID}`;
+
+    /* Regula de poze necesare: 50 RON → 8 poze, 60+ RON → 10 poze */
+    function requiredImages(price) {
+        if (price === 50) return 8;
+        if (price === 60) return 10;
+        if (price >= 70)  return 10;
+        return 8; // fallback
+    }
+    const REQUIRED = requiredImages(PRODUCT_PRICE);
+
+    /* Actualizează textul din hint cu numărul necesar */
+    document.getElementById("required-count").textContent = REQUIRED;
+
+    /* ── Elemente DOM ── */
+    const fileInput    = document.getElementById("file-input");
+    const dropZone     = document.getElementById("drop-zone");
+    const dropLabel    = document.getElementById("drop-label");
+    const previewGrid  = document.getElementById("preview-container");
+    const messageEl    = document.getElementById("message");
+    const countEl      = document.getElementById("count-indicator");
+    const submitBtn    = document.getElementById("submit-btn");
+    const stepUpload   = document.getElementById("step-upload");
+    const stepPreview  = document.getElementById("step-preview");
+    const sessionGallery = document.getElementById("session-gallery");
+    const btnBack      = document.getElementById("btn-back");
+
+    /* ── State ──
+       `images` = array de { name, type, dataUrl }
+       Persistat în sessionStorage — se reîncarcă la refresh de pagină
+       dar este izolat per tab/sesiune. */
+    let images = [];
+
+    /* ══════════════════════════
+       SESSION STORAGE helpers
+    ══════════════════════════ */
+
+    /** Salvează array-ul curent în sessionStorage */
+    function persistToSession() {
+        try {
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify(images));
+        } catch (e) {
+            /* sessionStorage e plin (imagine prea mare) — notifică utilizatorul */
+            console.warn("sessionStorage full:", e);
+            showUploadToast("⚠️ Nu s-a putut salva în sesiune — poza poate fi prea mare.");
+        }
+    }
+
+    /** Citește imaginile salvate în sesiunea curentă */
+    function loadFromSession() {
+        try {
+            const raw = sessionStorage.getItem(SESSION_KEY);
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    }
+
+    /* ══════════════════════════
+       INIT — reîncarcă sesiunea
+    ══════════════════════════ */
+    function init() {
+        images = loadFromSession();
+        const hint = document.getElementById("upload-hint");
+        hint.textContent = images.length
+            ? `${images.length} poze din sesiunea curentă (continuă sau adaugă mai multe)`
+            : `Necesar: ${REQUIRED} poze pentru acest design`;
+        render();
+    }
+
+    /* ══════════════════════════
+       FILE INPUT & DRAG-DROP
+    ══════════════════════════ */
+
+    /* Click pe zonă → deschide file picker */
+    dropZone.addEventListener("click", () => fileInput.click());
+
+    fileInput.addEventListener("change", e => {
+        processFiles(Array.from(e.target.files));
+        e.target.value = ""; /* resetează inputul pentru re-selectare */
+    });
+
+    dropZone.addEventListener("dragover", e => {
+        e.preventDefault();
+        dropZone.classList.add("drag-over");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", e => {
+        e.preventDefault();
+        dropZone.classList.remove("drag-over");
+        processFiles(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/")));
+    });
+
+    /** Convertește File-uri în { name, type, dataUrl } și le adaugă la sesiune */
+    function processFiles(files) {
+        if (!files.length) return;
+
+        let loaded = 0;
+        files.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                images.push({ name: file.name, type: file.type, dataUrl: e.target.result });
+                loaded++;
+                if (loaded === files.length) {
+                    persistToSession(); /* salvează în sessionStorage */
+                    render();
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    /* ══════════════════════════
+       RENDER galerie upload
+    ══════════════════════════ */
+    function render() {
+        previewGrid.innerHTML = "";
+
+        images.forEach((img, index) => {
+            const div = document.createElement("div");
+            div.className = "preview-item";
+            div.innerHTML = `
+                <img src="${img.dataUrl}" alt="${img.name}">
+                <button class="remove-img-btn" data-index="${index}" title="Șterge">&times;</button>
+            `;
+            previewGrid.appendChild(div);
+        });
+
+        /* Event delegation pentru remove */
+        previewGrid.querySelectorAll(".remove-img-btn").forEach(btn => {
+            btn.addEventListener("click", e => {
+                e.stopPropagation();
+                const i = parseInt(btn.dataset.index, 10);
+                images.splice(i, 1);
+                persistToSession();
+                render();
+            });
+        });
+
+        validate();
+    }
+
+    /* ══════════════════════════
+       VALIDARE
+    ══════════════════════════ */
+    function validate() {
+        const n = images.length;
+        countEl.textContent = `${n} / ${REQUIRED} poze`;
+
+        if (n < REQUIRED) {
+            messageEl.textContent = `Mai adaugă ${REQUIRED - n} ${REQUIRED - n === 1 ? "poză" : "poze"}`;
+            messageEl.className = "validation-message err";
+            submitBtn.disabled = true;
+        } else if (n > REQUIRED) {
+            messageEl.textContent = `Ai ${n - REQUIRED} poze în plus — mai șterge câteva`;
+            messageEl.className = "validation-message err";
+            submitBtn.disabled = true;
+        } else {
+            messageEl.textContent = "Perfect! Poți previzualiza comanda ✓";
+            messageEl.className = "validation-message ok";
+            submitBtn.disabled = false;
+        }
+    }
+
+    /* ══════════════════════════
+       FINALIZEAZĂ → PREVIEW
+    ══════════════════════════ */
+    submitBtn.addEventListener("click", () => {
+        if (images.length !== REQUIRED) return;
+        showPreview();
+    });
+
+    function showPreview() {
+        /* Populează galeria de sesiune din preview */
+        sessionGallery.innerHTML = "";
+        images.forEach(img => {
+            const el = document.createElement("img");
+            el.src = img.dataUrl;
+            el.alt = img.name;
+            el.title = img.name;
+            sessionGallery.appendChild(el);
+        });
+
+        /* Tranzitie între pași */
+        stepUpload.classList.add("hidden");
+        stepPreview.classList.remove("hidden");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    /* Înapoi la upload */
+    btnBack.addEventListener("click", () => {
+        stepPreview.classList.add("hidden");
+        stepUpload.classList.remove("hidden");
+    });
+
+    /* ══════════════════════════════════════════
+       CART INTEGRATION
+       Butonul #preview-cart-btn are clasa
+       `cart-quick-btn` → handlerul din main.js
+       îl preia automat prin event delegation.
+       Nu e nevoie de cod suplimentar — refolosim
+       exact aceeași logică ca pe pagina Home.
+    ══════════════════════════════════════════ */
+    /* Niciun cod extra necesar — main.js gestionează click-ul */
+
+    /* Toast local (nu depinde de main.js) */
+    function showUploadToast(msg) {
+        if (window.showToast) { window.showToast(msg); return; }
+        alert(msg);
+    }
+
+    /* ── START ── */
+    init();
+
+})();
+</script>
+
+{% endblock %}

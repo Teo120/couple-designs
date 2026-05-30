@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Couple Designs - Designuri unice pentru cupluri{% endblock %}
+
+{% block content %}
+
+<!-- Hero Section -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-glow"></div>
+        <div class="hero-particles" id="particles"></div>
+    </div>
+
+    <div class="hero-container">
+        <div class="hero-content">
+            <h1 class="hero-title">
+                Designuri unice<br>
+                <span class="hero-title-pink">pentru cupluri ♡</span>
+            </h1>
+
+            <p class="hero-subtitle">
+                Cele mai frumoase designuri create special pentru voi și persoana iubită.
+            </p>
+
+            <div class="hero-buttons">
+                <a href="{{ url_for('designuri') }}" class="btn-primary">
+                    Vezi toate designurile
+                </a>
+                <a href="{{ url_for('cum_functioneaza') }}" class="btn-outline">
+                    Cum funcționează
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Popular Designs -->
+<section class="popular-section">
+    <div class="section-header">
+        <h2 class="section-title">Cele mai populare designuri</h2>
+        <a href="{{ url_for('designuri') }}" class="btn-see-all">
+            Vezi toate
+        </a>
+    </div>
+
+    <div class="products-grid">
+        {% for product in products %}
+        <div class="product-card">
+
+            <div class="product-image">
+
+                <!-- Tag (stânga-sus) -->
+                {% if product.tag %}
+                <span class="product-tag">{{ product.tag }}</span>
+                {% endif %}
+
+                <!-- ❤️ Wishlist — dreapta-sus -->
+                <button class="wishlist-btn" aria-label="Adaugă la favorite">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                </button>
+
+                <!-- 🛒 Add to Cart — codul este păstrat intact (reutilizat pe Designuri)
+                     Vizual ascuns pe Acasă prin clasa home-hidden-cart-btn -->
+                <button class="cart-quick-btn home-hidden-cart-btn"
+                    data-id="{{ product.id }}"
+                    data-name="{{ product.name }}"
+                    data-price="{{ product.price }}"
+                    data-image="{{ product.image }}"
+                    aria-label="Adaugă în coș"
+                    aria-hidden="true"
+                    tabindex="-1">
+                    🛒
+                </button>
+
+                <!-- Imaginea -->
+                <img
+                    src="{{ url_for('static', filename='images/' + product.image) }}"
+                    alt="{{ product.name }}"
+                    class="product-img"
+                    loading="lazy"
+                >
+            </div>
+
+            <div class="product-info">
+                <div class="product-name-price">
+                    <h3 class="product-name">{{ product.name }}</h3>
+                    <span class="product-price">{{ product.price }} RON</span>
+                </div>
+                <div class="product-rating">
+                    <span class="star">★</span>
+                    <span class="rating-value">{{ product.rating }}</span>
+                    <span class="rating-count">({{ product.reviews }})</span>
+                </div>
+            </div>
+
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Designuri - Couple Designs{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+    <h1>Toate Designurile</h1>
+    <p>Explorează colecția noastră completă de designuri unice pentru cupluri</p>
+</div>
+
+<div class="page-content">
+    <div class="products-grid designs-grid">
+
+        {% for product in products %}
+        <div class="product-card">
+
+            <div class="product-image">
+
+                <!-- Tag (stânga-sus) -->
+                {% if product.tag %}
+                <span class="product-tag">{{ product.tag }}</span>
+                {% endif %}
+
+                <!-- ❤️ Wishlist — dreapta-sus -->
+                <button class="wishlist-btn" aria-label="Adaugă la favorite">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                </button>
+
+                <!-- 🛒 Add to Cart — dreapta-jos (simetric cu wishlist) -->
+                <button class="cart-quick-btn"
+                    data-id="{{ product.id }}"
+                    data-name="{{ product.name }}"
+                    data-price="{{ product.price }}"
+                    data-image="{{ product.image }}"
+                    aria-label="Adaugă în coș">
+                    🛒
+                </button>
+
+                <!-- Imaginea -->
+                <img
+                    src="{{ url_for('static', filename='images/' + product.image) }}"
+                    alt="{{ product.name }}"
+                    class="product-img"
+                    loading="lazy"
+                >
+            </div>
+
+            <div class="product-info">
+                <div class="product-name-price">
+                    <h3 class="product-name">{{ product.name }}</h3>
+                    <span class="product-price">{{ product.price }} RON</span>
+                </div>
+                <div class="product-rating">
+                    <span class="star">★</span>
+                    <span class="rating-value">{{ product.rating }}</span>
+                    <span class="rating-count">({{ product.reviews }})</span>
+                </div>
+
+                <!-- Buton Personalizează -->
+                <a href="/upload/{{ product.id }}" class="btn-personalize">
+                    ✏️ Personalizează
+                </a>
+            </div>
+
+        </div>
+        {% endfor %}
+
+    </div>
+</div>
+
+{% endblock %}
