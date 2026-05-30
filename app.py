@@ -598,7 +598,7 @@ def stripe_webhook():
 def send_minimal_confirmation(first_name, last_name, email_addr, telefon, stripe_session):
     full_name = f"{first_name} {last_name}".strip() or "Client"
     timestamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-    amount    = stripe_session.get('amount_total', 0) / 100
+    amount    = (getattr(stripe_session, 'amount_total', 0) or 0) / 100
 
     store_msg = Message(
         subject=f"[Comanda Platita] {full_name} — {amount:.2f} RON",
@@ -627,19 +627,20 @@ def payment_success():
         app.logger.info(f"Payment success session_id: {session_id}")
         if session_id:
             stripe_session = stripe.checkout.Session.retrieve(session_id)
-            meta       = dict(stripe_session.get('metadata') or {})
-            order_id   = meta.get('order_id', '')
-            first_name = meta.get('firstName', '')
-            last_name  = meta.get('lastName', '')
-            telefon    = meta.get('telefon', '')
 
-            # Incearca toate sursele posibile pentru email
-            customer_details = stripe_session.get('customer_details') or {}
-            email_addr = (
-                stripe_session.get('customer_email') or
-                customer_details.get('email') or
-                meta.get('email', '')
-            ) or ''
+            # Acces prin atribute (compatibil cu Stripe SDK v5+)
+            meta       = getattr(stripe_session, 'metadata', {}) or {}
+            order_id   = meta.get('order_id', '')   if isinstance(meta, dict) else ''
+            first_name = meta.get('firstName', '')  if isinstance(meta, dict) else ''
+            last_name  = meta.get('lastName', '')   if isinstance(meta, dict) else ''
+            telefon    = meta.get('telefon', '')     if isinstance(meta, dict) else ''
+
+            cust_details = getattr(stripe_session, 'customer_details', None)
+            email_addr   = (
+                getattr(stripe_session, 'customer_email', None) or
+                (getattr(cust_details, 'email', None) if cust_details else None) or
+                ''
+            )
 
             app.logger.info(f"order_id={order_id} email={email_addr} first={first_name}")
 
