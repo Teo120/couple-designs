@@ -564,22 +564,31 @@ def stripe_webhook():
         app.logger.error(f"Webhook parse error: {e}")
         return jsonify({'error': 'Invalid payload'}), 400
 
-    if event['type'] == 'checkout.session.completed':
-        stripe_session = event['data']['object']
+    event_type = event.get('type', '')
+    app.logger.info(f"Webhook event: {event_type}")
+
+    # Accepta atat formatul vechi cat si cel nou Stripe API
+    if 'checkout.session.completed' in event_type:
         try:
-            meta       = stripe_session.get('metadata', {})
+            stripe_session = event['data']['object']
+            meta       = dict(stripe_session.get('metadata') or {})
             order_id   = meta.get('order_id', '')
             first_name = meta.get('firstName', '')
             last_name  = meta.get('lastName', '')
-            email_addr = stripe_session.get('customer_email', '') or meta.get('email', '')
             telefon    = meta.get('telefon', '')
+            email_addr = (stripe_session.get('customer_email') or
+                          meta.get('email', ''))
+            app.logger.info(f"Webhook order: {order_id} email: {email_addr}")
 
             order_data = pending_orders.pop(order_id, None)
             if order_data:
                 send_order_confirmation(order_data)
+                app.logger.info("Email trimis din pending_orders")
             elif email_addr:
-                # pending_orders expirat (Railway restart) — email minimal din metadata
                 send_minimal_confirmation(first_name, last_name, email_addr, telefon, stripe_session)
+                app.logger.info(f"Email minimal trimis la {email_addr}")
+            else:
+                app.logger.warning("Webhook: nu am gasit email pentru confirmare")
         except Exception as e:
             app.logger.error(f"Webhook email error: {e}")
 
