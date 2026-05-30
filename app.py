@@ -539,7 +539,7 @@ def create_checkout_session():
                 'lastName': last_name,
                 'telefon': telefon,
             },
-            success_url=request.host_url.rstrip('/') + '/payment-success',
+            success_url=request.host_url.rstrip('/') + '/payment-success?session_id={CHECKOUT_SESSION_ID}',
             cancel_url=request.host_url.rstrip('/') + '/cart',
         )
         return jsonify({'url': session.url})
@@ -618,9 +618,38 @@ def send_minimal_confirmation(first_name, last_name, email_addr, telefon, stripe
     mail.send(customer_msg)
 
 
-# ── Stripe: pagina succes (fara apeluri externe - nu poate da 500) ──
+# ── Stripe: pagina succes ────────────────────────────────────
 @app.route('/payment-success')
 def payment_success():
+    # Trimite email cu datele comenzii
+    try:
+        session_id = request.args.get('session_id', '')
+        if session_id:
+            stripe_session = stripe.checkout.Session.retrieve(session_id)
+            meta       = dict(stripe_session.get('metadata') or {})
+            order_id   = meta.get('order_id', '')
+            first_name = meta.get('firstName', '')
+            last_name  = meta.get('lastName', '')
+            telefon    = meta.get('telefon', '')
+            email_addr = stripe_session.get('customer_email', '') or meta.get('email', '')
+
+            order_data = pending_orders.pop(order_id, None)
+            if order_data:
+                try:
+                    send_order_confirmation(order_data)
+                    app.logger.info(f"Email complet trimis pentru {order_id}")
+                except Exception as e:
+                    app.logger.error(f"Email error: {e}")
+            elif email_addr:
+                try:
+                    send_minimal_confirmation(first_name, last_name, email_addr, telefon, stripe_session)
+                    app.logger.info(f"Email minimal trimis la {email_addr}")
+                except Exception as e:
+                    app.logger.error(f"Email minimal error: {e}")
+    except Exception as e:
+        app.logger.error(f"Payment success error: {e}")
+
+    # Pagina de succes — HTML direct, nu poate da 500
     return (
         '<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8">'
         '<title>Plata reusita - Couple Designs</title>'
