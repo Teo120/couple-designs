@@ -624,6 +624,7 @@ def payment_success():
     # Trimite email cu datele comenzii
     try:
         session_id = request.args.get('session_id', '')
+        app.logger.info(f"Payment success session_id: {session_id}")
         if session_id:
             stripe_session = stripe.checkout.Session.retrieve(session_id)
             meta       = dict(stripe_session.get('metadata') or {})
@@ -631,13 +632,22 @@ def payment_success():
             first_name = meta.get('firstName', '')
             last_name  = meta.get('lastName', '')
             telefon    = meta.get('telefon', '')
-            email_addr = stripe_session.get('customer_email', '') or meta.get('email', '')
+
+            # Incearca toate sursele posibile pentru email
+            customer_details = stripe_session.get('customer_details') or {}
+            email_addr = (
+                stripe_session.get('customer_email') or
+                customer_details.get('email') or
+                meta.get('email', '')
+            ) or ''
+
+            app.logger.info(f"order_id={order_id} email={email_addr} first={first_name}")
 
             order_data = pending_orders.pop(order_id, None)
             if order_data:
                 try:
                     send_order_confirmation(order_data)
-                    app.logger.info(f"Email complet trimis pentru {order_id}")
+                    app.logger.info("Email complet trimis din pending_orders")
                 except Exception as e:
                     app.logger.error(f"Email error: {e}")
             elif email_addr:
@@ -646,6 +656,8 @@ def payment_success():
                     app.logger.info(f"Email minimal trimis la {email_addr}")
                 except Exception as e:
                     app.logger.error(f"Email minimal error: {e}")
+            else:
+                app.logger.warning("Nu s-a gasit email pentru confirmare!")
     except Exception as e:
         app.logger.error(f"Payment success error: {e}")
 
