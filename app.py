@@ -6,6 +6,7 @@ import base64
 import uuid
 import json
 import urllib.parse
+import threading
 import stripe
 from werkzeug.utils import secure_filename
 
@@ -635,37 +636,38 @@ def payment_success():
 
     app.logger.info(f"Payment success: email={email_addr} name={first_name} {last_name}")
 
-    # Trimite email de confirmare
-    try:
-        order_data = pending_orders.pop(order_id, None) if order_id else None
-        if order_data:
-            send_order_confirmation(order_data)
-            app.logger.info("Email complet trimis din pending_orders")
-        elif email_addr:
-            timestamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-            full_name = f"{first_name} {last_name}".strip() or "Client"
+    # Trimite email in background (nu blocheaza request-ul)
+    def send_emails_bg(fn, ln, em, tel, oid):
+        try:
+            with app.app_context():
+                order_data = pending_orders.pop(oid, None) if oid else None
+                if order_data:
+                    send_order_confirmation(order_data)
+                    app.logger.info("BG: Email complet trimis")
+                elif em:
+                    ts        = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+                    full_name = f"{fn} {ln}".strip() or "Client"
+                    mail.send(Message(
+                        subject=f"[Comanda Platita] {full_name}",
+                        sender=app.config['MAIL_USERNAME'],
+                        reply_to=em,
+                        recipients=[STORE_EMAIL],
+                        body=f"Comanda platita!\nNume: {full_name}\nEmail: {em}\nTelefon: {tel}\nData: {ts}",
+                    ))
+                    mail.send(Message(
+                        subject="Comanda ta la Couple Designs — platita cu succes",
+                        sender=app.config['MAIL_USERNAME'],
+                        recipients=[em],
+                        body=f"Buna ziua, {fn}!\n\nComanda ta a fost platita cu succes.\nTe vom contacta curand.\n\nEchipa Couple Designs",
+                    ))
+                    app.logger.info(f"BG: Email trimis la {em}")
+        except Exception as e:
+            app.logger.error(f"BG email error: {e}")
 
-            store_msg = Message(
-                subject=f"[Comanda Platita] {full_name}",
-                sender=app.config['MAIL_USERNAME'],
-                reply_to=email_addr,
-                recipients=[STORE_EMAIL],
-                body=f"Comanda platita!\nNume: {full_name}\nEmail: {email_addr}\nTelefon: {telefon}\nData: {timestamp}",
-            )
-            mail.send(store_msg)
-
-            customer_msg = Message(
-                subject="Comanda ta la Couple Designs — platita cu succes",
-                sender=app.config['MAIL_USERNAME'],
-                recipients=[email_addr],
-                body=f"Buna ziua, {first_name}!\n\nComanda ta a fost platita cu succes.\nTe vom contacta curand.\n\nEchipa Couple Designs",
-            )
-            mail.send(customer_msg)
-            app.logger.info(f"Email trimis la {email_addr}")
-        else:
-            app.logger.warning("Payment success fara email in URL")
-    except Exception as e:
-        app.logger.error(f"Email error in payment_success: {e}")
+    t = threading.Thread(target=send_emails_bg,
+                         args=(first_name, last_name, email_addr, telefon, order_id),
+                         daemon=True)
+    t.start()
 
     # Pagina de succes — HTML direct, nu poate da 500
     return (
