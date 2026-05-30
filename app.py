@@ -563,22 +563,54 @@ def payment_success():
                     pass
     except Exception as e:
         app.logger.error(f"Payment success error: {e}")
-    try:
-        return render_template('payment_success.html', name=customer_name)
-    except Exception as tmpl_err:
-        app.logger.error(f"Template error: {tmpl_err}")
-        greeting = f", {customer_name}" if customer_name else ""
-        return f"""<!DOCTYPE html>
-<html lang="ro"><head><meta charset="UTF-8"><title>Plată reușită — Couple Designs</title>
-<style>body{{font-family:sans-serif;background:#0a0a0a;color:#fff;text-align:center;padding:80px 20px;}}
-h1{{color:#4caf50;font-size:2rem;margin-bottom:16px;}}
-p{{color:#aaa;font-size:1rem;margin-bottom:32px;}}
-a{{display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#ff4d6d,#ff758f);
-color:#fff;border-radius:10px;text-decoration:none;font-weight:700;}}</style></head>
-<body><h1>&#x2705; Plată reușită{greeting}!</h1>
-<p>Comanda ta a fost înregistrată și plata a fost procesată cu succes.<br>
-Vei primi un email de confirmare în curând.</p>
-<a href="/">Înapoi acasă</a></body></html>"""
+
+    greeting = f", {customer_name}" if customer_name else ""
+    return f"""<!DOCTYPE html>
+<html lang="ro"><head><meta charset="UTF-8">
+<title>Plată reușită — Couple Designs</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:'Helvetica Neue',Arial,sans-serif;background:#0a0a0a;color:#fff;
+      min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px 20px;}}
+.wrap{{max-width:520px;text-align:center;}}
+.icon{{font-size:4rem;margin-bottom:24px;}}
+h1{{font-size:2rem;font-weight:800;margin-bottom:14px;}}
+.sub{{color:#888;font-size:1rem;line-height:1.6;margin-bottom:40px;}}
+.steps{{background:#111;border-radius:16px;padding:24px;text-align:left;
+        margin-bottom:36px;display:flex;flex-direction:column;gap:18px;}}
+.step{{display:flex;gap:14px;align-items:flex-start;}}
+.si{{font-size:1.4rem;flex-shrink:0;}}
+.step strong{{display:block;color:#fff;font-size:0.95rem;margin-bottom:3px;}}
+.step p{{font-size:0.83rem;color:#666;line-height:1.5;margin:0;}}
+.actions{{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}}
+.btn-p{{background:linear-gradient(135deg,#ff4d6d,#ff758f);color:#fff;
+        padding:13px 28px;border-radius:10px;font-weight:700;font-size:0.95rem;text-decoration:none;}}
+.btn-g{{color:#aaa;padding:13px 20px;border-radius:10px;font-size:0.95rem;
+        text-decoration:none;border:1px solid rgba(255,255,255,0.1);}}
+</style></head>
+<body><div class="wrap">
+<div class="icon">&#x2705;</div>
+<h1>Plată reușită{greeting}!</h1>
+<p class="sub">Comanda ta a fost înregistrată și plata a fost procesată cu succes.</p>
+<div class="steps">
+  <div class="step"><span class="si">&#x1F4E7;</span><div>
+    <strong>Confirmare pe email</strong>
+    <p>Vei primi în câteva minute un email cu rezumatul comenzii.</p>
+  </div></div>
+  <div class="step"><span class="si">&#x1F3A8;</span><div>
+    <strong>Design personalizat</strong>
+    <p>Echipa noastră va crea tabloul tău manual, cu grijă și atenție la detalii.</p>
+  </div></div>
+  <div class="step"><span class="si">&#x1F4E6;</span><div>
+    <strong>Livrare</strong>
+    <p>Te vom contacta pentru a stabili detaliile de livrare.</p>
+  </div></div>
+</div>
+<div class="actions">
+  <a href="/designuri" class="btn-p">Explorează mai multe</a>
+  <a href="/" class="btn-g">Înapoi acasă</a>
+</div>
+</div></body></html>"""
 
 
 # ── Entry point ───────────────────────────────────────────────
