@@ -893,6 +893,14 @@
     renderCart();
   });
 
+  // Re-render când utilizatorul revine pe pagină (inclusiv din bfcache / buton Back)
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      cart = JSON.parse(localStorage.getItem("cart") || "[]");
+      renderCart();
+    }
+  });
+
 })();
 </script>
 
