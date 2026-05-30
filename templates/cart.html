@@ -421,6 +421,42 @@
 }
 
 /* ══════════════════════════════════
+   PHOTO STATUS PER ITEM
+══════════════════════════════════ */
+.cart-photo-status {
+  margin-top: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.photo-status-line {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.photo-status-line.ok  { color: #4caf50; }
+.photo-status-line.err { color: #ff9800; }
+
+.upload-link-btn {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: #ff4081;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid rgba(255, 64, 129, 0.4);
+  border-radius: 6px;
+  padding: 3px 10px;
+  transition: 0.2s;
+  width: fit-content;
+}
+
+.upload-link-btn:hover {
+  background: rgba(255, 64, 129, 0.1);
+  border-color: #ff4081;
+}
+
+/* ══════════════════════════════════
    PHOTO PREVIEW
 ══════════════════════════════════ */
 .cart-item-wrap {
@@ -587,6 +623,30 @@
     }
   }
 
+  /* ── Poze necesare per preț ── */
+  function requiredPhotos(price) { return price <= 50 ? 8 : 10; }
+
+  function getPhotoCount(itemId) {
+    try {
+      const raw = sessionStorage.getItem(`cd_session_images_${itemId}`);
+      return raw ? JSON.parse(raw).length : 0;
+    } catch(e) { return 0; }
+  }
+
+  function buildPhotoStatusHtml(item) {
+    const count  = getPhotoCount(item.id);
+    const needed = requiredPhotos(item.price);
+    if (count === needed) {
+      return `<div class="cart-photo-status">
+        <span class="photo-status-line ok">✅ ${count}/${needed} poze încărcate</span>
+      </div>`;
+    }
+    return `<div class="cart-photo-status">
+      <span class="photo-status-line err">📸 ${count}/${needed} poze încărcate</span>
+      <a href="/upload/${item.id}" class="upload-link-btn">Încarcă pozele →</a>
+    </div>`;
+  }
+
   /* ── Photo preview per produs ── */
   function buildPhotoPreview(item) {
     let photos = [];
@@ -671,6 +731,7 @@
           <div>
             <h3>${item.name}</h3>
             <p>${item.price} RON</p>
+            ${buildPhotoStatusHtml(item)}
           </div>
         </div>
         <div class="cart-right">
@@ -759,7 +820,6 @@
     }
 
     // Validare poze obligatorii per produs
-    function requiredPhotos(price) { return price <= 50 ? 8 : 10; }
     for (const item of cart) {
       let photos = [];
       try {
