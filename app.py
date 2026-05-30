@@ -563,7 +563,22 @@ def payment_success():
                     pass
     except Exception as e:
         app.logger.error(f"Payment success error: {e}")
-    return render_template('payment_success.html', name=customer_name)
+    try:
+        return render_template('payment_success.html', name=customer_name)
+    except Exception as tmpl_err:
+        app.logger.error(f"Template error: {tmpl_err}")
+        greeting = f", {customer_name}" if customer_name else ""
+        return f"""<!DOCTYPE html>
+<html lang="ro"><head><meta charset="UTF-8"><title>Plată reușită — Couple Designs</title>
+<style>body{{font-family:sans-serif;background:#0a0a0a;color:#fff;text-align:center;padding:80px 20px;}}
+h1{{color:#4caf50;font-size:2rem;margin-bottom:16px;}}
+p{{color:#aaa;font-size:1rem;margin-bottom:32px;}}
+a{{display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#ff4d6d,#ff758f);
+color:#fff;border-radius:10px;text-decoration:none;font-weight:700;}}</style></head>
+<body><h1>&#x2705; Plată reușită{greeting}!</h1>
+<p>Comanda ta a fost înregistrată și plata a fost procesată cu succes.<br>
+Vei primi un email de confirmare în curând.</p>
+<a href="/">Înapoi acasă</a></body></html>"""
 
 
 # ── Entry point ───────────────────────────────────────────────

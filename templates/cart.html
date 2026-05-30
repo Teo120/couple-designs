@@ -758,6 +758,21 @@
       return;
     }
 
+    // Validare poze obligatorii per produs
+    function requiredPhotos(price) { return price <= 50 ? 8 : 10; }
+    for (const item of cart) {
+      let photos = [];
+      try {
+        const raw = sessionStorage.getItem(`cd_session_images_${item.id}`);
+        if (raw) photos = JSON.parse(raw);
+      } catch(e) {}
+      const needed = requiredPhotos(item.price);
+      if (photos.length !== needed) {
+        errorEl.textContent = `"${item.name}" necesită exact ${needed} poze — ai ${photos.length}. Revino la pagina produsului și încarcă pozele.`;
+        return;
+      }
+    }
+
     const data = {
       firstName : document.getElementById("firstName").value.trim(),
       lastName  : document.getElementById("lastName").value.trim(),
