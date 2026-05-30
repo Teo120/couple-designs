@@ -1,5 +1,4 @@
 from flask import Flask, render_template, jsonify, request, redirect
-from flask_mail import Mail, Message
 from datetime import datetime
 import os
 import base64
@@ -7,6 +6,7 @@ import uuid
 import json
 import urllib.parse
 import threading
+import requests as http
 import stripe
 from werkzeug.utils import secure_filename
 
@@ -16,21 +16,12 @@ app = Flask(__name__)
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Mail credentials — set via environment variables in production:
-#   export MAIL_USER=youraddress@gmail.com
-#   export MAIL_PASS=your_app_password
-app.config['MAIL_SERVER']   = 'smtp.gmail.com'
-app.config['MAIL_PORT']     = 587
-app.config['MAIL_USE_TLS']  = True
-app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USER', 'teomicsa@gmail.com')
-app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASS', 'yxuh qnrw wiok nldh')
+STORE_EMAIL    = os.environ.get('STORE_EMAIL',    'teomicsa@gmail.com')
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+RESEND_FROM    = os.environ.get('RESEND_FROM',    'onboarding@resend.dev')
 
-STORE_EMAIL = os.environ.get('STORE_EMAIL', 'teomicsa@gmail.com')
-
-mail = Mail(app)
-
-app.secret_key     = os.environ.get('SECRET_KEY', 'couple-designs-dev-secret')
-stripe.api_key     = os.environ.get('STRIPE_SECRET_KEY', '')
+app.secret_key = os.environ.get('SECRET_KEY', 'couple-designs-dev-secret')
+stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
 
 # Comenzi în așteptarea confirmării plății Stripe (UUID → order_data)
 pending_orders = {}
@@ -43,6 +34,51 @@ products = [
     {"id": 4, "name": "Moonlight Love", "price": 60, "rating": 4.9, "reviews": 63,  "image": "moonlight.png",    "tag": None},
     {"id": 5, "name": "Purple Dream",   "price": 55, "rating": 4.8, "reviews": 52,  "image": "purple_dream.png", "tag": None},
 ]
+
+
+# ── Email helper (Resend HTTP API) ────────────────────────────
+def send_email(to, subject, html=None, text=None, reply_to=None, attachments=None):
+    """
+    Send via Resend API (HTTP/HTTPS — works on Railway, no SMTP needed).
+    attachments: [{'filename': 'x.jpg', 'content': '<base64_string>'}]
+    """
+    if not RESEND_API_KEY:
+        app.logger.error("RESEND_API_KEY not set — email not sent")
+        return False
+
+    payload = {
+        'from': f'Couple Designs <{RESEND_FROM}>',
+        'to':   [to] if isinstance(to, str) else to,
+        'subject': subject,
+    }
+    if html:
+        payload['html'] = html
+    if text:
+        payload['text'] = text
+    if reply_to:
+        payload['reply_to'] = reply_to
+    if attachments:
+        payload['attachments'] = attachments
+
+    try:
+        resp = http.post(
+            'https://api.resend.com/emails',
+            headers={
+                'Authorization': f'Bearer {RESEND_API_KEY}',
+                'Content-Type':  'application/json',
+            },
+            json=payload,
+            timeout=15,
+        )
+        if resp.status_code in (200, 201):
+            app.logger.info(f"Email trimis la {to}")
+            return True
+        app.logger.error(f"Resend error {resp.status_code}: {resp.text}")
+        return False
+    except Exception as e:
+        app.logger.error(f"Resend exception: {e}")
+        return False
+
 
 # ── Rute ──────────────────────────────────────────────────────
 @app.route('/')
@@ -89,7 +125,8 @@ def save_cart():
 def api_products():
     return jsonify(products)
 
-# ── Contact form (existing working pattern) ───────────────────
+
+# ── Contact form ──────────────────────────────────────────────
 @app.route('/send-message', methods=['POST'])
 def send_message():
     name    = request.form.get('name', '').strip()
@@ -99,37 +136,22 @@ def send_message():
     if not name or not email or not message:
         return "All fields are required", 400
 
-    msg = Message(
+    send_email(
+        to=STORE_EMAIL,
         subject=f"Mesaj de la {name}",
-        sender=app.config['MAIL_USERNAME'],
+        text=f"Name: {name}\nEmail: {email}\n\nMessage:\n{message}",
         reply_to=email,
-        recipients=[STORE_EMAIL],
-        body=f"Name: {name}\nEmail: {email}\n\nMessage:\n{message}"
     )
-    mail.send(msg)
     return redirect('/contact')
 
 
-# ── Checkout ──────────────────────────────────────────────────
-# FIX SUMMARY vs old broken version:
-#   1. Route was declared AFTER `if __name__ == '__main__'` so Flask never
-#      registered it at import time — every POST returned 404. Fixed by
-#      moving the route here, before the entry-point guard.
-#   2. Old code used raw smtplib with hardcoded placeholder credentials
-#      ("YOUR_EMAIL", "APP_PASSWORD") instead of the already-configured
-#      flask_mail instance. Now uses flask_mail consistently.
-#   3. Cart JS sends item.quantity; old backend read item['qty'] — KeyError
-#      caused a 500 or silent zero totals. Now reads both keys safely.
-#   4. Added a customer confirmation email matching the contact-form pattern.
-#   5. Added proper input validation and error responses.
-
+# ── Checkout (transfer bancar) ────────────────────────────────
 @app.route('/checkout', methods=['POST'])
 def checkout():
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"success": False, "error": "Invalid request"}), 400
 
-    # Validate required fields
     required = ['firstName', 'lastName', 'email', 'telefon']
     missing  = [f for f in required if not str(data.get(f, '')).strip()]
     if missing:
@@ -139,18 +161,16 @@ def checkout():
     if not cart_items:
         return jsonify({"success": False, "error": "Cosul este gol"}), 422
 
-    # Build order data
     first_name = data['firstName'].strip()
     last_name  = data['lastName'].strip()
     full_name  = f"{first_name} {last_name}"
     email_addr = data['email'].strip()
     telefon    = data['telefon'].strip()
-    adresa     = data['adresa'].strip()
-    oras       = data['oras'].strip()
-    judet      = data['judet'].strip()
+    adresa     = data.get('adresa', '').strip()
+    oras       = data.get('oras', '').strip()
+    judet      = data.get('judet', '').strip()
     timestamp  = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
 
-    # Build product rows — handles both `quantity` and legacy `qty`
     total = 0
     rows_html = ""
     rows_text = ""
@@ -169,7 +189,6 @@ def checkout():
           </tr>"""
         rows_text += f"  - {name}  x{qty}  --  {subtotal:.2f} RON\n"
 
-    # ── HTML email → store ────────────────────────────────────
     html_store = f"""<!DOCTYPE html>
 <html lang="ro">
 <head><meta charset="UTF-8"></head>
@@ -178,14 +197,12 @@ def checkout():
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0"
              style="background:#111;border-radius:16px;overflow:hidden;max-width:600px;">
-
         <tr>
           <td style="background:linear-gradient(135deg,#ff4d6d,#ff758f);padding:30px 40px;text-align:center;">
             <h1 style="margin:0;color:#fff;font-size:24px;">Comanda Noua</h1>
             <p style="margin:8px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">{timestamp}</p>
           </td>
         </tr>
-
         <tr>
           <td style="padding:30px 40px;">
             <h2 style="margin:0 0 16px;font-size:15px;color:#ff4081;text-transform:uppercase;letter-spacing:1px;">Date client</h2>
@@ -198,7 +215,6 @@ def checkout():
             </table>
           </td>
         </tr>
-
         <tr>
           <td style="padding:0 40px 30px;">
             <h2 style="margin:0 0 16px;font-size:15px;color:#ff4081;text-transform:uppercase;letter-spacing:1px;">Produse comandate</h2>
@@ -222,20 +238,17 @@ def checkout():
             </table>
           </td>
         </tr>
-
         <tr>
           <td style="padding:20px 40px;border-top:1px solid #222;text-align:center;font-size:12px;color:#555;">
             Couple Designs &middot; contact@coupledesigns.ro &middot; +40 749 675 105
           </td>
         </tr>
-
       </table>
     </td></tr>
   </table>
 </body>
 </html>"""
 
-    # ── Plain-text confirmation → customer ────────────────────
     text_customer = f"""Buna ziua, {first_name}!
 
 Comanda ta la Couple Designs a fost primita si este in curs de procesare.
@@ -254,11 +267,6 @@ Produse:
 {rows_text}
   TOTAL: {total:.2f} RON
 
-Plata prin transfer bancar:
-  IBAN: ROZBR TEST TEST TEST
-  Va rugam sa mentionati numele in detaliile platii.
-
-=====================================
 Te vom contacta in cel mai scurt timp.
 
 Cu drag,
@@ -266,99 +274,55 @@ Echipa Couple Designs
 contact@coupledesigns.ro | +40 749 675 105
 """
 
-    # ── Imaginile de personalizare din sessionStorage ──────────────────────────
-    # Frontul trimite: [{ productId, productName, name, type, dataUrl }, ...]
-    # dataUrl = "data:<mime>;base64,<data>" — dezasamblat la atașare.
     session_images = data.get('sessionImages', [])
+    attachments = []
+    for idx, img in enumerate(session_images[:20]):
+        data_url = img.get('dataUrl', '')
+        img_name = img.get('name', f'imagine_{idx+1}.jpg')
+        if data_url and ',' in data_url:
+            try:
+                b64_data = data_url.split(',', 1)[1]
+                attachments.append({'filename': img_name, 'content': b64_data})
+            except Exception as e:
+                app.logger.warning(f"Imagine {img_name} nu s-a putut atasa: {e}")
 
-    # Secțiune HTML cu miniaturi pentru email-ul de notificare al merchantului
-    images_html_section = ""
-    if session_images:
-        thumbs = ""
-        for img in session_images[:20]:
-            thumbs += (
-                "<td style=\"padding:4px;\">"
-                "<img src=\"" + img.get('dataUrl','') + "\"" 
-                " width=\"80\" height=\"80\""
-                " style=\"object-fit:cover;border-radius:6px;border:1px solid #2a2a2a;\"" 
-                " alt=\"" + img.get('name','') + "\"></td>"
-            )
-        count = len(session_images)
-        images_html_section = (
-            "<tr><td style=\"padding:0 40px 30px;\">"
-            "<h2 style=\"margin:0 0 16px;font-size:15px;color:#ff4081;"
-            "text-transform:uppercase;letter-spacing:1px;\">"
-            f"Imagini personalizate ({count} poze)</h2>"
-            "<p style=\"font-size:13px;color:#777;margin:0 0 14px;\">"
-            "Pozele trimise de client pentru personalizarea designului:</p>"
-            "<table cellpadding=\"0\" cellspacing=\"0\"><tr>"
-            + thumbs +
-            "</tr></table></td></tr>"
+    thumbs = "".join(
+        f"<td style='padding:4px;'><img src='{img.get('dataUrl','')}' width='80' height='80'"
+        f" style='object-fit:cover;border-radius:6px;border:1px solid #2a2a2a;' alt='{img.get('name','')}'/></td>"
+        for img in session_images[:20]
+    )
+    if thumbs:
+        images_section = (
+            "<tr><td style='padding:0 40px 30px;'>"
+            f"<h2 style='margin:0 0 16px;font-size:15px;color:#ff4081;text-transform:uppercase;letter-spacing:1px;'>Imagini personalizate ({len(session_images)} poze)</h2>"
+            f"<table cellpadding='0' cellspacing='0'><tr>{thumbs}</tr></table></td></tr>"
         )
-
-    # Injectează secțiunea de imagini în email înainte de footer
-    footer_marker = (
-        "        <tr>\n"
-        "          <td style=\"padding:20px 40px;border-top:1px solid #222;"
-        "text-align:center;font-size:12px;color:#555;\">\n"
-        "            Couple Designs &middot; contact@coupledesigns.ro &middot; +40 749 675 105\n"
-        "          </td>\n"
-        "        </tr>"
-    )
-    html_store = html_store.replace(
-        footer_marker,
-        images_html_section + footer_marker
-    )
+        html_store = html_store.replace(
+            "<tr>\n          <td style=\"padding:20px 40px;border-top:1px solid #222;text-align:center;font-size:12px;color:#555;\">",
+            images_section + "\n        <tr>\n          <td style=\"padding:20px 40px;border-top:1px solid #222;text-align:center;font-size:12px;color:#555;\">",
+        )
 
     try:
-        # 1. Notifică merchantul — cu imagini inline în HTML + atașate ca fișiere
-        store_msg = Message(
+        send_email(
+            to=STORE_EMAIL,
             subject=f"[Comanda Noua] {full_name} -- {total:.2f} RON",
-            sender=app.config['MAIL_USERNAME'],
-            reply_to=email_addr,
-            recipients=[STORE_EMAIL],
             html=html_store,
+            reply_to=email_addr,
+            attachments=attachments if attachments else None,
         )
-
-        # Atașează fiecare imagine ca fișier separat — merchantul le poate descărca
-        for idx, img in enumerate(session_images):
-            data_url = img.get('dataUrl', '')
-            img_name = img.get('name', f'imagine_{idx+1}.jpg')
-            img_type = img.get('type', 'image/jpeg')
-            if data_url and ',' in data_url:
-                b64_data = data_url.split(',', 1)[1]
-                try:
-                    img_bytes = __import__('base64').b64decode(b64_data)
-                    store_msg.attach(
-                        filename=img_name,
-                        content_type=img_type,
-                        data=img_bytes,
-                        disposition='attachment'
-                    )
-                except Exception as attach_err:
-                    app.logger.warning(f"Imagine {img_name} nu s-a putut atasa: {attach_err}")
-
-        mail.send(store_msg)
-
-        # 2. Confirmare client (fără imagini — email simplu)
-        customer_msg = Message(
+        send_email(
+            to=email_addr,
             subject="Comanda ta la Couple Designs -- confirmare",
-            sender=app.config['MAIL_USERNAME'],
-            recipients=[email_addr],
-            body=text_customer,
+            text=text_customer,
         )
-        mail.send(customer_msg)
-
     except Exception as e:
         app.logger.error(f"Checkout email error: {e}")
-        # Return success anyway so the customer isn't stuck —
-        # the error is logged server-side for manual follow-up.
         return jsonify({"success": True, "warning": "Email delivery issue noted."})
 
     return jsonify({"success": True})
 
 
-# ── Helper: trimite emailuri după plată ───────────────────────
+# ── Helper: trimite emailuri după plată Stripe ────────────────
 def send_order_confirmation(order_data):
     first_name     = order_data.get('firstName', '').strip()
     last_name      = order_data.get('lastName', '').strip()
@@ -388,12 +352,23 @@ def send_order_confirmation(order_data):
         )
         rows_text += f"  - {name}  x{qty}  --  {subtotal:.2f} RON\n"
 
-    thumbs_html = "".join(
-        f"<td style='padding:4px;'><img src='{img.get('dataUrl','')}' width='80' height='80'"
-        f" style='object-fit:cover;border-radius:6px;border:1px solid #2a2a2a;'"
-        f" alt='{img.get('name','')}' /></td>"
-        for img in session_images[:20]
-    )
+    attachments = []
+    thumbs_html = ""
+    for idx, img in enumerate(session_images[:20]):
+        data_url = img.get('dataUrl', '')
+        img_name = img.get('name', f'imagine_{idx+1}.jpg')
+        if data_url and ',' in data_url:
+            try:
+                b64_data = data_url.split(',', 1)[1]
+                attachments.append({'filename': img_name, 'content': b64_data})
+                thumbs_html += (
+                    f"<td style='padding:4px;'><img src='{data_url}' width='80' height='80'"
+                    f" style='object-fit:cover;border-radius:6px;border:1px solid #2a2a2a;'"
+                    f" alt='{img.get('name','')}' /></td>"
+                )
+            except Exception as e:
+                app.logger.warning(f"Imagine {img_name} nu s-a putut atasa: {e}")
+
     images_section = (
         f"<tr><td style='padding:0 40px 30px;'>"
         f"<h2 style='margin:0 0 16px;font-size:15px;color:#ff4081;text-transform:uppercase;letter-spacing:1px;'>"
@@ -471,33 +446,18 @@ Echipa Couple Designs
 contact@coupledesigns.ro | +40 749 675 105
 """
 
-    store_msg = Message(
+    send_email(
+        to=STORE_EMAIL,
         subject=f"[Comanda Platita] {full_name} -- {total:.2f} RON",
-        sender=app.config['MAIL_USERNAME'],
-        reply_to=email_addr,
-        recipients=[STORE_EMAIL],
         html=html_store,
+        reply_to=email_addr,
+        attachments=attachments if attachments else None,
     )
-    for idx, img in enumerate(session_images):
-        data_url = img.get('dataUrl', '')
-        img_name = img.get('name', f'imagine_{idx+1}.jpg')
-        img_type = img.get('type', 'image/jpeg')
-        if data_url and ',' in data_url:
-            try:
-                img_bytes = base64.b64decode(data_url.split(',', 1)[1])
-                store_msg.attach(filename=img_name, content_type=img_type,
-                                 data=img_bytes, disposition='attachment')
-            except Exception as e:
-                app.logger.warning(f"Imagine {img_name} nu s-a putut atasa: {e}")
-    mail.send(store_msg)
-
-    customer_msg = Message(
+    send_email(
+        to=email_addr,
         subject="Comanda ta la Couple Designs — platita cu succes",
-        sender=app.config['MAIL_USERNAME'],
-        recipients=[email_addr],
-        body=text_customer,
+        text=text_customer,
     )
-    mail.send(customer_msg)
 
 
 # ── Stripe: creare sesiune de plată ──────────────────────────
@@ -554,80 +514,9 @@ def create_checkout_session():
         return jsonify({"error": "Eroare la procesarea plății. Încearcă din nou."}), 400
 
 
-# ── Stripe: webhook (confirmare plată) ───────────────────────
-@app.route('/stripe-webhook', methods=['POST'])
-def stripe_webhook():
-    payload    = request.get_data()
-    sig_header = request.headers.get('Stripe-Signature', '')
-    wh_secret  = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
-
-    try:
-        if wh_secret:
-            event = stripe.Webhook.construct_event(payload, sig_header, wh_secret)
-        else:
-            event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
-    except Exception as e:
-        app.logger.error(f"Webhook parse error: {e}")
-        return jsonify({'error': 'Invalid payload'}), 400
-
-    event_type = event.get('type', '')
-    app.logger.info(f"Webhook event: {event_type}")
-
-    # Accepta atat formatul vechi cat si cel nou Stripe API
-    if 'checkout.session.completed' in event_type:
-        try:
-            stripe_session = event['data']['object']
-            meta       = dict(stripe_session.get('metadata') or {})
-            order_id   = meta.get('order_id', '')
-            first_name = meta.get('firstName', '')
-            last_name  = meta.get('lastName', '')
-            telefon    = meta.get('telefon', '')
-            email_addr = (stripe_session.get('customer_email') or
-                          meta.get('email', ''))
-            app.logger.info(f"Webhook order: {order_id} email: {email_addr}")
-
-            order_data = pending_orders.pop(order_id, None)
-            if order_data:
-                send_order_confirmation(order_data)
-                app.logger.info("Email trimis din pending_orders")
-            elif email_addr:
-                send_minimal_confirmation(first_name, last_name, email_addr, telefon, stripe_session)
-                app.logger.info(f"Email minimal trimis la {email_addr}")
-            else:
-                app.logger.warning("Webhook: nu am gasit email pentru confirmare")
-        except Exception as e:
-            app.logger.error(f"Webhook email error: {e}")
-
-    return jsonify({'status': 'ok'})
-
-
-def send_minimal_confirmation(first_name, last_name, email_addr, telefon, stripe_session):
-    full_name = f"{first_name} {last_name}".strip() or "Client"
-    timestamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-    amount    = (getattr(stripe_session, 'amount_total', 0) or 0) / 100
-
-    store_msg = Message(
-        subject=f"[Comanda Platita] {full_name} — {amount:.2f} RON",
-        sender=app.config['MAIL_USERNAME'],
-        reply_to=email_addr,
-        recipients=[STORE_EMAIL],
-        body=f"Comanda platita!\nNume: {full_name}\nEmail: {email_addr}\nTelefon: {telefon}\nTotal: {amount:.2f} RON\nData: {timestamp}",
-    )
-    mail.send(store_msg)
-
-    customer_msg = Message(
-        subject="Comanda ta la Couple Designs — platita cu succes",
-        sender=app.config['MAIL_USERNAME'],
-        recipients=[email_addr],
-        body=f"Buna ziua, {first_name}!\n\nComanda ta a fost platita cu succes ({amount:.2f} RON).\nTe vom contacta curand.\n\nEchipa Couple Designs",
-    )
-    mail.send(customer_msg)
-
-
-# ── Stripe: pagina succes ────────────────────────────────────
+# ── Stripe: pagina succes ─────────────────────────────────────
 @app.route('/payment-success')
 def payment_success():
-    # Datele clientului vin din URL (fara apel Stripe - nu poate da 500)
     first_name = request.args.get('fn', '')
     last_name  = request.args.get('ln', '')
     email_addr = request.args.get('em', '')
@@ -636,7 +525,6 @@ def payment_success():
 
     app.logger.info(f"Payment success: email={email_addr} name={first_name} {last_name}")
 
-    # Trimite email in background (nu blocheaza request-ul)
     def send_emails_bg(fn, ln, em, tel, oid):
         try:
             with app.app_context():
@@ -647,20 +535,18 @@ def payment_success():
                 elif em:
                     ts        = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
                     full_name = f"{fn} {ln}".strip() or "Client"
-                    mail.send(Message(
+                    send_email(
+                        to=STORE_EMAIL,
                         subject=f"[Comanda Platita] {full_name}",
-                        sender=app.config['MAIL_USERNAME'],
+                        text=f"Comanda platita!\nNume: {full_name}\nEmail: {em}\nTelefon: {tel}\nData: {ts}",
                         reply_to=em,
-                        recipients=[STORE_EMAIL],
-                        body=f"Comanda platita!\nNume: {full_name}\nEmail: {em}\nTelefon: {tel}\nData: {ts}",
-                    ))
-                    mail.send(Message(
+                    )
+                    send_email(
+                        to=em,
                         subject="Comanda ta la Couple Designs — platita cu succes",
-                        sender=app.config['MAIL_USERNAME'],
-                        recipients=[em],
-                        body=f"Buna ziua, {fn}!\n\nComanda ta a fost platita cu succes.\nTe vom contacta curand.\n\nEchipa Couple Designs",
-                    ))
-                    app.logger.info(f"BG: Email trimis la {em}")
+                        text=f"Buna ziua, {fn}!\n\nComanda ta a fost platita cu succes.\nTe vom contacta curand.\n\nEchipa Couple Designs",
+                    )
+                    app.logger.info(f"BG: Email minimal trimis la {em}")
         except Exception as e:
             app.logger.error(f"BG email error: {e}")
 
@@ -669,7 +555,6 @@ def payment_success():
                          daemon=True)
     t.start()
 
-    # Pagina de succes — HTML direct, nu poate da 500
     return (
         '<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8">'
         '<title>Plata reusita - Couple Designs</title>'
