@@ -5,6 +5,7 @@ import os
 import base64
 import uuid
 import json
+import urllib.parse
 import stripe
 from werkzeug.utils import secure_filename
 
@@ -539,7 +540,11 @@ def create_checkout_session():
                 'lastName': last_name,
                 'telefon': telefon,
             },
-            success_url=request.host_url.rstrip('/') + '/payment-success?session_id={CHECKOUT_SESSION_ID}',
+            success_url=request.host_url.rstrip('/') + '/payment-success?' + urllib.parse.urlencode({
+                'fn': first_name, 'ln': last_name,
+                'em': data.get('email', ''), 'tel': telefon,
+                'oid': order_id,
+            }),
             cancel_url=request.host_url.rstrip('/') + '/cart',
         )
         return jsonify({'url': session.url})
@@ -621,46 +626,46 @@ def send_minimal_confirmation(first_name, last_name, email_addr, telefon, stripe
 # ── Stripe: pagina succes ────────────────────────────────────
 @app.route('/payment-success')
 def payment_success():
-    # Trimite email cu datele comenzii
+    # Datele clientului vin din URL (fara apel Stripe - nu poate da 500)
+    first_name = request.args.get('fn', '')
+    last_name  = request.args.get('ln', '')
+    email_addr = request.args.get('em', '')
+    telefon    = request.args.get('tel', '')
+    order_id   = request.args.get('oid', '')
+
+    app.logger.info(f"Payment success: email={email_addr} name={first_name} {last_name}")
+
+    # Trimite email de confirmare
     try:
-        session_id = request.args.get('session_id', '')
-        app.logger.info(f"Payment success session_id: {session_id}")
-        if session_id:
-            stripe_session = stripe.checkout.Session.retrieve(session_id)
+        order_data = pending_orders.pop(order_id, None) if order_id else None
+        if order_data:
+            send_order_confirmation(order_data)
+            app.logger.info("Email complet trimis din pending_orders")
+        elif email_addr:
+            timestamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+            full_name = f"{first_name} {last_name}".strip() or "Client"
 
-            # Acces prin atribute (compatibil cu Stripe SDK v5+)
-            meta       = getattr(stripe_session, 'metadata', {}) or {}
-            order_id   = meta.get('order_id', '')   if isinstance(meta, dict) else ''
-            first_name = meta.get('firstName', '')  if isinstance(meta, dict) else ''
-            last_name  = meta.get('lastName', '')   if isinstance(meta, dict) else ''
-            telefon    = meta.get('telefon', '')     if isinstance(meta, dict) else ''
-
-            cust_details = getattr(stripe_session, 'customer_details', None)
-            email_addr   = (
-                getattr(stripe_session, 'customer_email', None) or
-                (getattr(cust_details, 'email', None) if cust_details else None) or
-                ''
+            store_msg = Message(
+                subject=f"[Comanda Platita] {full_name}",
+                sender=app.config['MAIL_USERNAME'],
+                reply_to=email_addr,
+                recipients=[STORE_EMAIL],
+                body=f"Comanda platita!\nNume: {full_name}\nEmail: {email_addr}\nTelefon: {telefon}\nData: {timestamp}",
             )
+            mail.send(store_msg)
 
-            app.logger.info(f"order_id={order_id} email={email_addr} first={first_name}")
-
-            order_data = pending_orders.pop(order_id, None)
-            if order_data:
-                try:
-                    send_order_confirmation(order_data)
-                    app.logger.info("Email complet trimis din pending_orders")
-                except Exception as e:
-                    app.logger.error(f"Email error: {e}")
-            elif email_addr:
-                try:
-                    send_minimal_confirmation(first_name, last_name, email_addr, telefon, stripe_session)
-                    app.logger.info(f"Email minimal trimis la {email_addr}")
-                except Exception as e:
-                    app.logger.error(f"Email minimal error: {e}")
-            else:
-                app.logger.warning("Nu s-a gasit email pentru confirmare!")
+            customer_msg = Message(
+                subject="Comanda ta la Couple Designs — platita cu succes",
+                sender=app.config['MAIL_USERNAME'],
+                recipients=[email_addr],
+                body=f"Buna ziua, {first_name}!\n\nComanda ta a fost platita cu succes.\nTe vom contacta curand.\n\nEchipa Couple Designs",
+            )
+            mail.send(customer_msg)
+            app.logger.info(f"Email trimis la {email_addr}")
+        else:
+            app.logger.warning("Payment success fara email in URL")
     except Exception as e:
-        app.logger.error(f"Payment success error: {e}")
+        app.logger.error(f"Email error in payment_success: {e}")
 
     # Pagina de succes — HTML direct, nu poate da 500
     return (
