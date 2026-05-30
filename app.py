@@ -541,36 +541,28 @@ def create_checkout_session():
 # ── Stripe: succes dupa plata ────────────────────────────────
 @app.route('/payment-success')
 def payment_success():
-    session_id = request.args.get('session_id')
-    if not session_id:
-        return redirect('/cart')
-
-    try:
-        stripe_session = stripe.checkout.Session.retrieve(session_id)
-    except Exception:
-        return redirect('/cart')
-
-    if stripe_session.payment_status != 'paid':
-        return redirect('/cart')
-
-    order_id = ''
-    try:
-        order_id = stripe_session.metadata['order_id']
-    except Exception:
-        order_id = ''
-
-    order_data = pending_orders.pop(order_id, None)
-
-    if order_data:
-        try:
-            send_order_confirmation(order_data)
-        except Exception as e:
-            app.logger.error(f"Email error after payment: {e}")
-
     customer_name = ''
-    if order_data:
-        customer_name = f"{order_data.get('firstName','')} {order_data.get('lastName','')}".strip()
-
+    try:
+        session_id = request.args.get('session_id', '')
+        if session_id:
+            stripe_session = stripe.checkout.Session.retrieve(session_id)
+            order_id = ''
+            try:
+                order_id = stripe_session.metadata['order_id']
+            except Exception:
+                pass
+            order_data = pending_orders.pop(order_id, None)
+            if order_data:
+                try:
+                    send_order_confirmation(order_data)
+                except Exception as e:
+                    app.logger.error(f"Email error: {e}")
+                try:
+                    customer_name = f"{order_data.get('firstName','')} {order_data.get('lastName','')}".strip()
+                except Exception:
+                    pass
+    except Exception as e:
+        app.logger.error(f"Payment success error: {e}")
     return render_template('payment_success.html', name=customer_name)
 
 
